@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.07';
+our $VERSION = '0.09';
 
 sub new {
     my $class = shift;
@@ -17,14 +17,19 @@ sub new {
 
     my $self = bless {}, $class;
 
+    # Pattern
+    my $pattern = @_ % 2 ? shift : undef;
+    $self->pattern->pattern($pattern) if defined $pattern;
+
+    # Shortcut in case of chained API
+    return $self unless @_;
+
+    # Process remaining params
     return $self->initialize(@_);
 }
 
 sub initialize {
     my $self   = shift;
-
-    # Pattern
-    my $pattern = @_ % 2 ? shift : undef;
 
     # Remaining params
     my $params = ref $_[0] eq 'HASH' ? {%{$_[0]}} : {@_};
@@ -37,9 +42,6 @@ sub initialize {
     $self->name(delete $params->{name});
     $self->to(delete $params->{to});
     $self->_parent_is_plural_resource(delete $params->{_parent_is_plural_resource});
-
-    # Save to pattern
-    $self->pattern->pattern($pattern) if defined $pattern;
     $self->constraints(delete $params->{constraints});
 
     return $self;
@@ -93,47 +95,39 @@ sub add_resource {
 
     my $controller = $name;
 
-    my $resource = $self->add_route("$name");
+    my $resource = $self->add_route($name);
 
-    $resource->add_route(
-        '/new',
-        method => 'get',
-        to     => "$controller#create_form",
-        name   => $name.'_create_form'
-    );
+    $resource->add_route('/new')
+      ->via('get')
+      ->to("$controller#create_form")
+      ->name($name.'_create_form');
 
-    $resource->add_route(
-        '/edit',
-        method => 'get',
-        to     => "$controller#update_form",
-        name   => $name.'_update_form'
-    );
+    $resource->add_route('/edit')
+      ->via('get')
+      ->to("$controller#update_form")
+      ->name($name.'_update_form');
 
 
     my $nested = $resource->add_route;
-    $nested->add_route(
-        method => 'post',
-        to     => "$controller#create",
-        name   => $name.'_create'
-    );
+    $nested->add_route
+      ->via('post')
+      ->to("$controller#create")
+      ->name($name.'_create');
 
-    $nested->add_route(
-        method => 'get',
-        to     => "$controller#show",
-        name   => $name.'_show'
-    );
+    $nested->add_route
+      ->via('get')
+      ->to("$controller#show")
+      ->name($name.'_show');
 
-    $nested->add_route(
-        method => 'put',
-        to     => "$controller#update",
-        name   => $name.'_update'
-    );
+    $nested->add_route
+      ->via('put')
+      ->to("$controller#update")
+      ->name($name.'_update');
 
-    $nested->add_route(
-        method => 'delete',
-        to     => "$name#delete",
-        name   => $name.'_delete'
-    );
+    $nested->add_route
+      ->via('delete')
+      ->to("$name#delete")
+      ->name($name.'_delete');
 
     return $self;
 }
@@ -162,7 +156,7 @@ sub add_resources {
     my $last_resource;
 
     foreach my $name (@$names) {
-        my $resource = $self->add_route("$name", _parent_is_plural_resource => $name);
+        my $resource = $self->add_route($name, _parent_is_plural_resource => $name);
 
         # nested resources
         my $id_prefix = '';
@@ -171,57 +165,51 @@ sub add_resources {
         }
 
         # resource
-        $resource->add_route(
-            method => 'get',
-            to     => "$name#index",
-            name   => $name.'_index'
-        );
-        $resource->add_route(
-            method => 'post',
-            to     => "$name#create",
-            name   => $name.'_create'
-        );
+        $resource->add_route
+          ->via('get')
+          ->to("$name#index")
+          ->name($name.'_index');
+
+        $resource->add_route
+          ->via('post')
+          ->to("$name#create")
+          ->name($name.'_create');
 
         # new resource item
-        $resource->add_route(
-            '/new',
-            method => 'get',
-            to     => "$name#create_form",
-            name   => $name.'_create_form'
-        );
+        $resource->add_route('/new')
+          ->via('get')
+          ->to("$name#create_form")
+          ->name($name.'_create_form');
 
         # modify resource item
         my $nested = $resource->add_route(
             ':'.$id_prefix.'id'
         );
 
-        $nested->add_route(
-            method => 'get',
-            to     => "$name#show",
-            name   => $name.'_show'
-        );
-        $nested->add_route(
-            method => 'put',
-            to     => "$name#update",
-            name   => $name.'_update'
-        );
-        $nested->add_route(
-            method => 'delete',
-            to     => "$name#delete",
-            name   => $name.'_delete'
-        );
-        $nested->add_route(
-            'edit',
-            method => 'get',
-            to     => "$name#update_form",
-            name   => $name.'_update_form'
-        );
-        $nested->add_route(
-            'delete',
-            method => 'get',
-            to     => "$name#delete_form",
-            name   => $name.'_delete_form'
-        );
+        $nested->add_route
+          ->via('get')
+          ->to("$name#show")
+          ->name($name.'_show');
+
+        $nested->add_route
+          ->via('put')
+          ->to("$name#update")
+          ->name($name.'_update');
+
+        $nested->add_route
+          ->via('delete')
+          ->to("$name#delete")
+          ->name($name.'_delete');
+
+        $nested->add_route('edit')
+          ->via('get')
+          ->to("$name#update_form")
+          ->name($name.'_update_form');
+
+        $nested->add_route('delete')
+          ->via('get')
+          ->to("$name#delete_form")
+          ->name($name.'_delete_form');
 
         $last_resource = $resource;
     }
@@ -468,7 +456,7 @@ sub _build_path {
     $path->{method} = $self->{method}->[0] if $self->{method};
 
     # Return path if current route has no pattern
-    return $path unless defined $self->{pattern}->pattern;
+    return $path unless $self->{pattern} && defined $self->{pattern}->pattern;
 
     $self->{pattern}->compile;
 
@@ -567,7 +555,8 @@ sub _build_path {
             }
 
             # Constraint
-            if (defined(my $constraint = $part->{constraint})) {
+            my $constraint = $part->{constraint};
+            if (defined $constraint) {
                 croak qq/Param '$name' fails a constraint/
                   unless $path_part =~ m/^$constraint$/;
             }
