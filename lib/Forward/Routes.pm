@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 sub new {
     my $class = shift;
@@ -526,7 +526,7 @@ sub _build_path {
 
             # Param
             $path_part = $params{$name};
-            $path_part //= $self->{defaults}->{$name};
+            $path_part = defined $path_part ? $path_part : $self->{defaults}->{$name};
 
             if (!$depth && !defined $path_part) {
                 $self->capture_error($name);
