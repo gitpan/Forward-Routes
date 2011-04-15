@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Forward-Routes
-version:            0.12
+version:            0.13
 abstract:           Forward::Routes: routes for web framework builders
 author:  []
 license:            artistic_2
