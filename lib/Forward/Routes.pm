@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.13';
+our $VERSION = '0.14';
 
 sub new {
     my $class = shift;
@@ -62,6 +62,9 @@ sub add_route {
     my $self = shift;
 
     my $child = $self->new(@_);
+
+    # Format inheritance
+    $child->format([@{$self->{format}}]) if $self->{format};
 
     push @{$self->children}, $child;
 
@@ -182,9 +185,8 @@ sub add_resources {
           ->name($name.'_create_form');
 
         # modify resource item
-        my $nested = $resource->add_route(
-            ':'.$id_prefix.'id'
-        );
+        my $nested = $resource->add_route(':'.$id_prefix.'id')
+          ->constraints($id_prefix.'id' => qr/[^.\/]+/);
 
         $nested->add_route
           ->via('get')
@@ -315,6 +317,18 @@ sub _match {
     my $method = shift;
     my $path   = shift;
 
+    # gather format data
+    my $request_format = shift;
+
+    # Format
+    if ($self->{format} && !defined($request_format)) {
+        $path =~m/\.([\a-zA-Z0-9]{1,4})$/;
+        $request_format = defined $1 ? $1 : '';
+
+        # format extension is only replaced if format constraint exists
+        $path =~s/\.[\a-zA-Z0-9]{1,4}$// if $request_format;
+    }
+
     # Method
     return unless $self->_match_method($method);
 
@@ -330,21 +344,24 @@ sub _match {
     # Children match
     my $matches = [];
 
-    # Format
-    my $format = $self->_match_format(\$path);
-    return unless defined $format;
-
     # Children
     if (@{$self->children}) {
         foreach my $child (@{$self->children}) {
 
             # Match?
-            $matches = $child->_match($method => $path);
+            $matches = $child->_match($method => $path, $request_format);
             last if $matches;
 
         }
         return unless $matches;
     }
+
+    # Format
+    unless (@{$self->children}) {
+        $self->_match_format($request_format)
+          || return;
+    }
+
 
     # Match object
     my $match;
@@ -360,7 +377,7 @@ sub _match {
 
     my $params = $self->prepare_params(@$captures);
     $match->add_params($params);
-    $match->add_params({format => $format}) if length($format);
+    $match->add_params({format => $request_format}) if length($request_format);
 
     return $matches;
 }
@@ -433,6 +450,9 @@ sub build_path {
     my $child = $self->find_route($name);
 
     my $path = $child->_build_path(@_) if $child;
+
+    # Format extension
+    $path->{path} .= '.'.$child->{format}->[0] if $child->{format} && $child->{format}->[0];
 
     $path->{path} =~s/^\/// if $path;
 
@@ -676,23 +696,17 @@ sub format {
 }
 
 sub _match_format {
-    my $self = shift;
-    my $path = shift;
+    my $self            = shift;
+    my $request_format  = shift;
 
-    return '' unless defined $self->format;
+    $request_format ||= '';
+    my $required_format = $self->{format} || [''];
 
-    my @match = ($$path =~m/\.([\a-zA-Z0-9]{1,4})$/);
-
-    my $format = defined $1 ? $1 : '';
-
-    my @success = grep { $_ eq $format } @{$self->format};
+    my @success = grep { $_ eq $request_format } @{$required_format};
 
     return unless @success;
 
-    $$path =~s/\.[\a-zA-Z0-9]{1,4}$//;
-
-    return $format;
-
+    return 1;
 }
 
 1;
@@ -962,6 +976,49 @@ retrieved from the returned match object.
 
     $m = $r->match(get => 'hello/there.jpeg');
     # $m is undef
+
+Once a format constraint has been defined, all child routes inherit the
+behaviour of their parents, unless they get format constraints themselves.
+For example, adding a format constraint to the route root object affects all
+child routes added via C<add_route>.
+    
+    my $root = Forward::Routes->new->format('html');
+    $root->add_route('foo')->format('xml');
+    $root->add_route('baz');
+
+    $m = $root->match(get => 'foo.html');
+    # $m is undef;
+    
+    $m = $root->match(get => 'foo.xml');
+    # $m->[0]->params is {format => 'xml'};
+
+    $m = $root->match(get => 'baz.html');
+    # $m->[0]->params is {format => 'html'};
+
+    $m = $root->match(get => 'baz.xml');
+    # $m is undef;
+
+If no format constraint is added to a route and the route's parents also have
+no format constraints, there is also no format validation taking place. This
+might cause kind of unexpected behaviour when dealing with placeholders:
+
+    $r = Forward::Routes->new;
+    $r->add_route(':foo/:bar');
+
+    $m = $r->match(get => 'hello/there.html');
+    # $m->[0]->params is {foo => 'hello', bar => 'there.html'}
+
+If this is not what you want, an empty format constraint can be passed explicitly:
+
+    $r = Forward::Routes->new->format('');
+    $r->add_route(':foo/:bar');
+
+    $m = $r->match(get => 'hello/there.html');
+    # $m->[0] is undef
+
+    $m = $r->match(get => 'hello/there');
+    # $m->[0]->params is {foo => 'hello', bar => 'there'}
+
 
 =head2 Naming
 

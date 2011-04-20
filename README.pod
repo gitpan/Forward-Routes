@@ -266,6 +266,49 @@ retrieved from the returned match object.
     $m = $r->match(get => 'hello/there.jpeg');
     # $m is undef
 
+Once a format constraint has been defined, all child routes inherit the
+behaviour of their parents, unless they get format constraints themselves.
+For example, adding a format constraint to the route root object affects all
+child routes added via C<add_route>.
+    
+    my $root = Forward::Routes->new->format('html');
+    $root->add_route('foo')->format('xml');
+    $root->add_route('baz');
+
+    $m = $root->match(get => 'foo.html');
+    # $m is undef;
+    
+    $m = $root->match(get => 'foo.xml');
+    # $m->[0]->params is {format => 'xml'};
+
+    $m = $root->match(get => 'baz.html');
+    # $m->[0]->params is {format => 'html'};
+
+    $m = $root->match(get => 'baz.xml');
+    # $m is undef;
+
+If no format constraint is added to a route and the route's parents also have
+no format constraints, there is also no format validation taking place. This
+might cause kind of unexpected behaviour when dealing with placeholders:
+
+    $r = Forward::Routes->new;
+    $r->add_route(':foo/:bar');
+
+    $m = $r->match(get => 'hello/there.html');
+    # $m->[0]->params is {foo => 'hello', bar => 'there.html'}
+
+If this is not what you want, an empty format constraint can be passed explicitly:
+
+    $r = Forward::Routes->new->format('');
+    $r->add_route(':foo/:bar');
+
+    $m = $r->match(get => 'hello/there.html');
+    # $m->[0] is undef
+
+    $m = $r->match(get => 'hello/there');
+    # $m->[0]->params is {foo => 'hello', bar => 'there'}
+
+
 =head2 Naming
 
 Each route can get a name through the C<name> method. Names are required to
