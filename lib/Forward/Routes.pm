@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 
 sub new {
     my $class = shift;
@@ -29,7 +29,7 @@ sub new {
 }
 
 sub initialize {
-    my $self   = shift;
+    my $self = shift;
 
     # Remaining params
     my $params = ref $_[0] eq 'HASH' ? {%{$_[0]}} : {@_};
@@ -49,8 +49,7 @@ sub initialize {
 }
 
 sub prefixed_with {
-    my $self = shift;
-    my $prefix = shift;
+    my ($self, $prefix) = @_;
 
     my $router = Forward::Routes->new(prefix => $prefix);
     $router->{patterns} = $self->{patterns};
@@ -65,6 +64,7 @@ sub add_route {
 
     # Format inheritance
     $child->format([@{$self->{format}}]) if $self->{format};
+    $child->method([@{$self->{method}}]) if $self->{method};
 
     push @{$self->children}, $child;
 
@@ -92,9 +92,8 @@ sub _is_bridge {
 }
 
 
-sub add_resource {
-    my $self = shift;
-    my $name = shift;
+sub add_singular_resources {
+    my ($self, $name) = @_;
 
     my $controller = $name;
 
@@ -138,7 +137,6 @@ sub add_resource {
 
 sub add_resources {
     my $self = shift;
-
 
     # Nestes resources
     my $parent_resource = $self->_parent_is_plural_resource
@@ -233,8 +231,7 @@ sub defaults {
 }
 
 sub name {
-    my $self = shift;
-    my $name = shift;
+    my ($self, $name) = @_;
 
     return $self->{name} unless defined $name;
 
@@ -244,8 +241,7 @@ sub name {
 }
 
 sub to {
-    my $self = shift;
-    my $to   = shift;
+    my ($self, $to) = @_;
 
     unless ($to) {
         my $d = $self->defaults;
@@ -261,8 +257,7 @@ sub to {
 }
 
 sub find_route {
-    my $self = shift;
-    my $name = shift;
+    my ($self, $name) = @_;
 
     $self->{routes_by_name} ||= {};
     return $self->{routes_by_name}->{$name} if $self->{routes_by_name}->{$name};
@@ -279,9 +274,9 @@ sub find_route {
 }
 
 sub match {
-    my $self   = shift;
-    my $method = shift;
-    my $path   = shift || die 'missing path';
+    my ($self, $method, $path) = @_;
+
+    $path || die 'missing path';
 
     # Leading slash
     $path = "/$path" unless $path =~ m{ \A / }x;
@@ -313,12 +308,7 @@ sub via {
 
 
 sub _match {
-    my $self   = shift;
-    my $method = shift;
-    my $path   = shift;
-
-    # gather format data
-    my $request_format = shift;
+    my ($self, $method, $path, $request_format) = @_;
 
     # Format
     if ($self->{format} && !defined($request_format)) {
@@ -328,9 +318,6 @@ sub _match {
         # format extension is only replaced if format constraint exists
         $path =~s/\.[\a-zA-Z0-9]{1,4}$// if $request_format;
     }
-
-    # Method
-    return unless $self->_match_method($method);
 
     # Current pattern match
     my $captures = [];
@@ -356,12 +343,12 @@ sub _match {
         return unless $matches;
     }
 
-    # Format
-    unless (@{$self->children}) {
-        $self->_match_format($request_format)
-          || return;
-    }
 
+    # Format and Method
+    unless (@{$self->children}) {
+        $self->_match_method($method) || return;
+        $self->_match_format($request_format) || return;
+    }
 
     # Match object
     my $match;
@@ -384,8 +371,7 @@ sub _match {
 
 
 sub _match_current_pattern {
-    my $self     = shift;
-    my $path_ref = shift;
+    my ($self, $path_ref) = @_;
 
     # Pattern
     my $regex = $self->pattern->compile->pattern;
@@ -404,8 +390,7 @@ sub _match_current_pattern {
 }
 
 sub prepare_params {
-    my $self = shift;
-    my @captures = @_;
+    my ($self, @captures) = @_;
 
     # Copy! of defaults
     my $params = {%{$self->defaults}};
@@ -433,8 +418,7 @@ sub constraints {
 }
 
 sub _match_method {
-    my $self  = shift;
-    my $value = shift;
+    my ($self, $value) = @_;
 
     return 1 unless defined $self->method;
 
@@ -444,15 +428,17 @@ sub _match_method {
 }
 
 sub build_path {
-    my $self = shift;
-    my $name = shift;
+    my ($self, $name, @params) = @_;
 
     my $child = $self->find_route($name);
 
-    my $path = $child->_build_path(@_) if $child;
+    my $path = $child->_build_path(@params) if $child;
 
     # Format extension
     $path->{path} .= '.'.$child->{format}->[0] if $child->{format} && $child->{format}->[0];
+
+    # Method
+    $path->{method} = $child->{method}->[0] if $child->{method};
 
     $path->{path} =~s/^\/// if $path;
 
@@ -462,8 +448,7 @@ sub build_path {
 }
 
 sub _build_path {
-    my $self   = shift;
-    my %params = @_;
+    my ($self, %params) = @_;
 
     my $path = {};
     $path->{path} = '';
@@ -471,9 +456,6 @@ sub _build_path {
     if ($self->{parent}) {
         $path = $self->{parent}->_build_path(%params);
     }
-
-    # Method
-    $path->{method} = $self->{method}->[0] if $self->{method};
 
     # Return path if current route has no pattern
     return $path unless $self->{pattern} && defined $self->{pattern}->pattern;
@@ -619,8 +601,7 @@ sub _build_path {
 }
 
 sub capture_error {
-    my $self         = shift;
-    my $capture_name = shift;
+    my ($self, $capture_name) = @_;
 
     croak qq/Required param '$capture_name' was not passed when building a path/;
 }
@@ -696,8 +677,7 @@ sub format {
 }
 
 sub _match_format {
-    my $self            = shift;
-    my $request_format  = shift;
+    my ($self, $request_format) = @_;
 
     $request_format ||= '';
     my $required_format = $self->{format} || [''];
@@ -1101,6 +1081,9 @@ be reduced this way.
 =head2 Resources
 
 The C<resources> method allows to generate Rails like resources.
+
+Please look at L<Forward::Guides::Routes::RestfulResources> for more in depth
+documentation.
 
     $r = Forward::Routes->new;
     $r->add_resources('users', 'photos', 'tags');
