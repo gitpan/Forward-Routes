@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.15';
+our $VERSION = '0.16';
 
 sub new {
     my $class = shift;
@@ -27,6 +27,7 @@ sub new {
     # Process remaining params
     return $self->initialize(@_);
 }
+
 
 sub initialize {
     my $self = shift;
@@ -48,6 +49,7 @@ sub initialize {
 
 }
 
+
 sub prefixed_with {
     my ($self, $prefix) = @_;
 
@@ -56,6 +58,7 @@ sub prefixed_with {
 
     return $router;
 }
+
 
 sub add_route {
     my $self = shift;
@@ -139,13 +142,23 @@ sub add_resources {
     my $self = shift;
 
     # Nestes resources
-    my $parent_resource = $self->_parent_is_plural_resource
-      if defined $self->_parent_is_plural_resource;
+    my $parent_resource = $self->_parent_is_plural_resource || '';
+    my $parent_resource_prefix = $parent_resource ? $parent_resource.'_' : '';
 
     if ($parent_resource) {
 
+        shift @{$self->children};
+        shift @{$self->children};
+        shift @{$self->children};
+
         # nested :id part becomes new parent
-        $self = $self->children->[3];
+        $self = $self->children->[0];
+
+        shift @{$self->children};
+        shift @{$self->children};
+        shift @{$self->children};
+        shift @{$self->children};
+        shift @{$self->children};
 
         # rename parent placeholder
         $self->pattern->pattern(':'.$parent_resource.'_id')
@@ -159,57 +172,51 @@ sub add_resources {
     foreach my $name (@$names) {
         my $resource = $self->add_route($name, _parent_is_plural_resource => $name);
 
-        # nested resources
-        my $id_prefix = '';
-        if ($parent_resource) {
-            $id_prefix = $name.'_';
-        }
-
         # resource
         $resource->add_route
           ->via('get')
           ->to("$name#index")
-          ->name($name.'_index');
+          ->name($parent_resource_prefix.$name.'_index');
 
         $resource->add_route
           ->via('post')
           ->to("$name#create")
-          ->name($name.'_create');
+          ->name($parent_resource_prefix.$name.'_create');
 
         # new resource item
         $resource->add_route('/new')
           ->via('get')
           ->to("$name#create_form")
-          ->name($name.'_create_form');
+          ->name($parent_resource_prefix.$name.'_create_form');
 
         # modify resource item
-        my $nested = $resource->add_route(':'.$id_prefix.'id')
-          ->constraints($id_prefix.'id' => qr/[^.\/]+/);
+        my $nested = $resource->add_route(':id')
+          ->constraints('id' => qr/[^.\/]+/);
 
         $nested->add_route
           ->via('get')
           ->to("$name#show")
-          ->name($name.'_show');
+          ->name($parent_resource_prefix.$name.'_show');
 
         $nested->add_route
           ->via('put')
           ->to("$name#update")
-          ->name($name.'_update');
+          ->name($parent_resource_prefix.$name.'_update');
 
         $nested->add_route
           ->via('delete')
           ->to("$name#delete")
-          ->name($name.'_delete');
+          ->name($parent_resource_prefix.$name.'_delete');
 
         $nested->add_route('edit')
           ->via('get')
           ->to("$name#update_form")
-          ->name($name.'_update_form');
+          ->name($parent_resource_prefix.$name.'_update_form');
 
         $nested->add_route('delete')
           ->via('get')
           ->to("$name#delete_form")
-          ->name($name.'_delete_form');
+          ->name($parent_resource_prefix.$name.'_delete_form');
 
         $last_resource = $resource;
     }
@@ -217,18 +224,26 @@ sub add_resources {
     return $last_resource;
 }
 
+
 sub defaults {
     my $self = shift;
+    my (@params) = @_;
 
-    $self->{defaults} ||= {};
+    # Initialize
+    my $d = $self->{defaults} ||= {};
 
-    return $self->{defaults} unless defined $_[0];
+    # Getter
+    return $d unless defined $params[0];
 
-    my $defaults = ref $_[0] eq 'HASH' ? $_[0] : {@_};
-    %{$self->defaults} = (%{$self->defaults}, %$defaults);
+    # Hash ref or array?
+    my $passed_defaults = ref $params[0] eq 'HASH' ? $params[0] : {@params};
+
+    # Merge defaults
+    %$d = (%$d, %$passed_defaults);
 
     return $self;
 }
+
 
 sub name {
     my ($self, $name) = @_;
@@ -240,21 +255,21 @@ sub name {
     return $self;
 }
 
-sub to {
-    my ($self, $to) = @_;
 
-    unless ($to) {
-        my $d = $self->defaults;
-        return $d->{controller}.'#'.$d->{action}
-          if $d->{controller} && $d->{action};
-        return;
-    }
+sub to {
+    my $self = shift;
+    my ($to) = @_;
+
+    return unless $to;
 
     my $params;
     @$params{qw/controller action/} = split '#' => $to;
 
+    $params->{controller} ||= undef;
+
     return $self->defaults($params);
 }
+
 
 sub find_route {
     my ($self, $name) = @_;
@@ -273,6 +288,7 @@ sub find_route {
     return undef;
 }
 
+
 sub match {
     my ($self, $method, $path) = @_;
 
@@ -288,6 +304,7 @@ sub match {
     return $matches;
 }
 
+
 sub method {
     my $self = shift;
 
@@ -301,6 +318,7 @@ sub method {
 
     return $self;
 }
+
 
 sub via {
     shift->method(@_);
@@ -389,6 +407,7 @@ sub _match_current_pattern {
     return \@captures;
 }
 
+
 sub prepare_params {
     my ($self, @captures) = @_;
 
@@ -405,6 +424,7 @@ sub prepare_params {
 
 }
 
+
 sub constraints {
     my $self = shift;
 
@@ -417,6 +437,7 @@ sub constraints {
     return $self;
 }
 
+
 sub _match_method {
     my ($self, $value) = @_;
 
@@ -426,6 +447,7 @@ sub _match_method {
 
     return !!grep { $_ eq $value } @{$self->method};
 }
+
 
 sub build_path {
     my ($self, $name, @params) = @_;
@@ -446,6 +468,7 @@ sub build_path {
 
     croak qq/Unknown name '$name' used to build a path/;
 }
+
 
 sub _build_path {
     my ($self, %params) = @_;
@@ -600,11 +623,13 @@ sub _build_path {
 
 }
 
+
 sub capture_error {
     my ($self, $capture_name) = @_;
 
     croak qq/Required param '$capture_name' was not passed when building a path/;
 }
+
 
 sub children {
     my $self = shift;
@@ -662,6 +687,7 @@ sub _parent_is_plural_resource {
     return $self;
 }
 
+
 sub format {
     my $self = shift;
 
@@ -675,6 +701,7 @@ sub format {
 
     return $self;
 }
+
 
 sub _match_format {
     my ($self, $request_format) = @_;
@@ -701,7 +728,7 @@ Instead of letting a web server like Apache decide which files to serve based
 on the provided URL, the whole work can be done by your framework using the
 L<Forward::Routes> module.
 
-=head3 1. Routes setup
+=head2 1. Routes setup
 
 Think of routes as kind of simplified regular expressions!
 
@@ -713,7 +740,7 @@ Each route represents a URL path pattern and holds a set of default values.
     # add a new route with a :city placeholder and controller and action defaults
     $routes->add_route('/towns/:city')->defaults(controller => 'world', action => 'cities');
 
-=head3 2. Search for a matching route
+=head2 2. Search for a matching route
 
 After the setup has been done, the method and path of a current HTTP request
 can be passed to the routes root object using the "match" method to search for
@@ -745,7 +772,7 @@ such cases.
     my $matches = $routes->match(get => '/hello_world');
 
 
-=head3 3. Parameters
+=head2 3. Parameters
 
 The match object holds two types of parameters:
 

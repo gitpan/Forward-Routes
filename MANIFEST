@@ -9,11 +9,14 @@ README.pod
 t/defaults.t
 t/exceptions_unbalanced_parentheses.t
 t/format_constraints.t
-t/method_constraints.t
+t/method_defaults.t
+t/method_to.t
+t/nested_resources.t
 t/nested_routes_with_format_inheritance.t
 t/nested_routes_with_method_inheritance.t
 t/placeholders_optional.t
 t/placeholders_optional_and_defaults.t
+t/request_method_constraints.t
 t/resources.t
 t/resources_with_format_constraint.t
 t/routes.t
