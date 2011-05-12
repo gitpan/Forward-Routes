@@ -8,9 +8,9 @@ sub new {
     return bless {}, shift;
 }
 
-sub add_params {
-    my $self   = shift;
-    my $params = shift;
+sub _add_params {
+    my $self = shift;
+    my ($params) = @_;
 
     %{$self->params} = (%$params, %{$self->params});
 
@@ -18,12 +18,21 @@ sub add_params {
 }
 
 
-sub pattern {
-    my $self   = shift;
+sub _add_captures {
+    my $self = shift;
+    my ($params) = @_;
 
-    return $self->{pattern} unless defined $_[0];
+    %{$self->captures} = (%$params, %{$self->captures});
 
-    $self->{pattern} = $_[0];
+    return $self;
+}
+
+
+sub _add_name {
+    my $self = shift;
+    my ($name) = @_;
+
+    $self->{name} = $name unless length $self->{name};
 
     return $self;
 }
@@ -31,25 +40,50 @@ sub pattern {
 
 sub params {
     my $self = shift;
+    my ($key) = @_;
 
+    # Initialize
     $self->{params} ||= {};
-    return $self->{params} unless $_[0];
 
-    $self->{params} = $_[0];
-    return $self;
+    # Get hash
+    return $self->{params} unless length $key;
+
+    # Get hash value
+    return $self->{params}->{$key};
+}
+
+
+sub captures {
+    my $self = shift;
+    my ($key) = @_;
+
+    # Initialize
+    $self->{captures} ||= {};
+
+    # Get hash
+    return $self->{captures} unless length $key;
+
+    # Get hash value
+    return $self->{captures}->{$key};
 }
 
 
 sub is_bridge {
     my $self = shift;
+    my (@is_bridge) = @_;
 
-    return $self->{is_bridge} unless defined $_[0];
+    return $self->{is_bridge} unless @is_bridge;
 
-    $self->{is_bridge} = $_[0];
+    $self->{is_bridge} = $is_bridge[0];
 
     return $self;
 }
 
+
+sub name {
+    my $self = shift;
+    return $self->{name};
+}
 
 
 1;

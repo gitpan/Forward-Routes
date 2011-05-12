@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 
 sub new {
     my $class = shift;
@@ -147,6 +147,8 @@ sub add_resources {
 
     if ($parent_resource) {
 
+        my $id_prefix = $self->singularize->($parent_resource);
+
         shift @{$self->children};
         shift @{$self->children};
         shift @{$self->children};
@@ -161,7 +163,7 @@ sub add_resources {
         shift @{$self->children};
 
         # rename parent placeholder
-        $self->pattern->pattern(':'.$parent_resource.'_id')
+        $self->pattern->pattern(':'.$id_prefix.'_id')
           if $self->pattern->pattern eq ':id';
     }
 
@@ -222,6 +224,38 @@ sub add_resources {
     }
 
     return $last_resource;
+}
+
+
+# overwrite code ref for more advanced approach:
+# sub {
+#     require Lingua::EN::Inflect::Number;
+#     return &Lingua::EN::Inflect::Number::to_S($value);
+# }
+sub singularize {
+    my $self = shift;
+    my ($code_ref) = @_;
+
+    # Initialize very basic singularize code ref
+    $Forward::Routes::singularize ||= sub {
+        my $value = shift;
+    
+        if ($value =~ s/ies$//) {
+            $value .= 'y';
+        }
+        else {
+            $value =~ s/s$//;
+        }
+
+        return $value;
+    };
+
+    return $Forward::Routes::singularize unless $code_ref;
+
+    $Forward::Routes::singularize = $code_ref;
+
+    return $self;
+
 }
 
 
@@ -380,9 +414,19 @@ sub _match {
         $match = $matches->[0];
     }
 
-    my $params = $self->prepare_params(@$captures);
-    $match->add_params($params);
-    $match->add_params({format => $request_format}) if length($request_format);
+    my $captures_hash = $self->_captures_to_hash(@$captures);
+
+    # Merge defaults and captures, Copy! of $self->defaults
+    $match->_add_params({%{$self->defaults}, %$captures_hash});
+
+    # Format
+    $match->_add_params({format => $request_format}) if length($request_format);
+
+    # Captures
+    $match->_add_captures($captures_hash);
+
+    # Name
+    $match->_add_name($self->name);
 
     return $matches;
 }
@@ -408,20 +452,26 @@ sub _match_current_pattern {
 }
 
 
-sub prepare_params {
-    my ($self, @captures) = @_;
+sub _captures_to_hash {
+    my $self = shift;
+    my (@captures) = @_;
 
-    # Copy! of defaults
-    my $params = {%{$self->defaults}};
+    my $captures = {};
+
+    my $defaults = $self->{defaults};
 
     foreach my $name (@{$self->pattern->captures}) {
-        last unless @captures;
-        my $c = shift @captures;
-        $params->{$name} = $c unless !defined $c;
+        my $capture = shift @captures;
+
+        if (defined $capture) {
+            $captures->{$name} = $capture;
+        }
+        else {
+            $captures->{$name} = $defaults->{$name} if defined $defaults->{$name};
+        }
     }
 
-    return $params;
-
+    return $captures;
 }
 
 
@@ -1109,8 +1159,8 @@ be reduced this way.
 
 The C<resources> method allows to generate Rails like resources.
 
-Please look at L<Forward::Guides::Routes::RestfulResources> for more in depth
-documentation.
+Please look at L<Forward::Guides::Routes::Resources> for more in depth
+documentation on restful resources.
 
     $r = Forward::Routes->new;
     $r->add_resources('users', 'photos', 'tags');
@@ -1134,6 +1184,9 @@ documentation.
 
 
 =head2 Nested Resources
+
+Please look at L<Forward::Guides::Routes::NestedResources> for more in depth
+documentation on nested resources.
 
     $r = Forward::Routes->new;
     my $magazines = $r->add_resources('magazines');
