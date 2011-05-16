@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.17';
+our $VERSION = '0.18';
 
 sub new {
     my $class = shift;
@@ -42,7 +42,7 @@ sub initialize {
     $self->prefix(delete $params->{prefix});
     $self->name(delete $params->{name});
     $self->to(delete $params->{to});
-    $self->_parent_is_plural_resource(delete $params->{_parent_is_plural_resource});
+    $self->_is_plural_resource(delete $params->{_is_plural_resource});
     $self->constraints(delete $params->{constraints});
 
     return $self;
@@ -141,55 +141,51 @@ sub add_singular_resources {
 sub add_resources {
     my $self = shift;
 
-    # Nestes resources
-    my $parent_resource = $self->_parent_is_plural_resource || '';
-    my $parent_resource_prefix = $parent_resource ? $parent_resource.'_' : '';
-
-    if ($parent_resource) {
-
-        my $id_prefix = $self->singularize->($parent_resource);
-
-        shift @{$self->children};
-        shift @{$self->children};
-        shift @{$self->children};
-
-        # nested :id part becomes new parent
-        $self = $self->children->[0];
-
-        shift @{$self->children};
-        shift @{$self->children};
-        shift @{$self->children};
-        shift @{$self->children};
-        shift @{$self->children};
-
-        # rename parent placeholder
-        $self->pattern->pattern(':'.$id_prefix.'_id')
-          if $self->pattern->pattern eq ':id';
-    }
-
     my $names = $_[0] && ref $_[0] eq 'ARRAY' ? [@{$_[0]}] : [@_];
 
     my $last_resource;
 
+
     foreach my $name (@$names) {
-        my $resource = $self->add_route($name, _parent_is_plural_resource => $name);
+        my $resource;
+        my $parent_name_prefix = '';
+
+        # Nestes resources
+        if ($self->_is_plural_resource) {
+    
+            my @parent_names = $self->_parent_resource_names;
+
+            $parent_name_prefix = join('_', @parent_names).'_';
+  
+            my $parent_id_name = $self->singularize->($parent_names[-1]).'_id';
+
+            $resource = $self->add_route(':'.$parent_id_name.'/'.$name)
+              ->_is_plural_resource(1)
+              ->_parent_resource_names($self->_parent_resource_names, $name)
+              ->constraints($parent_id_name => qr/[^.\/]+/);
+        }
+        else {
+            $resource = $self->add_route($name)
+              ->_is_plural_resource(1)
+              ->_parent_resource_names($name);
+        }
 
         # resource
         $resource->add_route
           ->via('get')
           ->to("$name#index")
-          ->name($parent_resource_prefix.$name.'_index');
+          ->name($parent_name_prefix.$name.'_index');
 
         $resource->add_route
           ->via('post')
           ->to("$name#create")
-          ->name($parent_resource_prefix.$name.'_create');
+          ->name($parent_name_prefix.$name.'_create');
 
         # new resource item
         $resource->add_route('/new')
           ->via('get')
           ->to("$name#create_form")
-          ->name($parent_resource_prefix.$name.'_create_form');
+          ->name($parent_name_prefix.$name.'_create_form');
 
         # modify resource item
         my $nested = $resource->add_route(':id')
@@ -198,27 +194,27 @@ sub add_resources {
         $nested->add_route
           ->via('get')
           ->to("$name#show")
-          ->name($parent_resource_prefix.$name.'_show');
+          ->name($parent_name_prefix.$name.'_show');
 
         $nested->add_route
           ->via('put')
           ->to("$name#update")
-          ->name($parent_resource_prefix.$name.'_update');
+          ->name($parent_name_prefix.$name.'_update');
 
         $nested->add_route
           ->via('delete')
           ->to("$name#delete")
-          ->name($parent_resource_prefix.$name.'_delete');
+          ->name($parent_name_prefix.$name.'_delete');
 
         $nested->add_route('edit')
           ->via('get')
           ->to("$name#update_form")
-          ->name($parent_resource_prefix.$name.'_update_form');
+          ->name($parent_name_prefix.$name.'_update_form');
 
         $nested->add_route('delete')
           ->via('get')
           ->to("$name#delete_form")
-          ->name($parent_resource_prefix.$name.'_delete_form');
+          ->name($parent_name_prefix.$name.'_delete_form');
 
         $last_resource = $resource;
     }
@@ -326,7 +322,8 @@ sub find_route {
 sub match {
     my ($self, $method, $path) = @_;
 
-    $path || die 'missing path';
+    length $method || croak 'Forward::Routes->match: missing request method';
+    defined $path || croak 'Forward::Routes->match: missing path';
 
     # Leading slash
     $path = "/$path" unless $path =~ m{ \A / }x;
@@ -405,10 +402,20 @@ sub _match {
     # Match object
     my $match;
 
-    if (!$matches->[0] || $self->_is_bridge) {
+    if ($self->_is_bridge) {
         $match = Forward::Routes::Match->new;
-        $match->is_bridge(1) if $self->_is_bridge;
+        $match->is_bridge(1);
+
+        # make earlier captures available to bridge
+        if (my $m = $matches->[0]) {
+            $match->_add_params(\%{$m->captures});
+            $match->_add_captures(\%{$m->captures});
+        }
+
         unshift @$matches, $match;
+    }
+    elsif (!$matches->[0]){
+        $match = $matches->[0] = Forward::Routes::Match->new;
     }
     else {
         $match = $matches->[0];
@@ -727,12 +734,29 @@ sub pattern {
 }
 
 
-sub _parent_is_plural_resource {
+sub _parent_resource_names {
+    my $self = shift;
+    my (@names) = @_;
+
+    # Initialize
+    $self->{_parent_resource_names} ||=[];
+
+
+    if (@names) {
+        $self->{_parent_resource_names} = \@names;
+        return $self;
+    }
+
+    return @{$self->{_parent_resource_names}};
+}
+
+
+sub _is_plural_resource {
     my $self = shift;
 
-    return $self->{_parent_is_plural_resource} unless defined $_[0];
+    return $self->{_is_plural_resource} unless defined $_[0];
 
-    $self->{_parent_is_plural_resource} = $_[0];
+    $self->{_is_plural_resource} = $_[0];
 
     return $self;
 }

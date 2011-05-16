@@ -7,7 +7,7 @@ use Test::More;
 
 use Forward::Routes;
 
-use Test::More tests => 52;
+use Test::More tests => 58;
 
 
 #############################################################################
@@ -17,7 +17,36 @@ my $r = Forward::Routes->new;
 
 my $ads = $r->add_resources('magazines')->add_resources('ads');
 
-my $m = $r->match(get => 'magazines/1/ads');
+
+# magazine routes work
+my $m = $r->match(get => 'magazines');
+is_deeply $m->[0]->params => {controller => 'magazines', action => 'index'};
+
+$m = $r->match(get => 'magazines/new');
+is_deeply $m->[0]->params => {controller => 'magazines', action => 'create_form'};
+
+$m = $r->match(post => 'magazines');
+is_deeply $m->[0]->params => {controller => 'magazines', action => 'create'};
+
+$m = $r->match(get => 'magazines/1');
+is_deeply $m->[0]->params => {controller => 'magazines', action => 'show', id => 1};
+
+$m = $r->match(get => 'magazines/1/edit');
+is_deeply $m->[0]->params => {controller => 'magazines', action => 'update_form', id => 1};
+
+$m = $r->match(get => 'magazines/1/delete');
+is_deeply $m->[0]->params => {controller => 'magazines', action => 'delete_form', id => 1};
+
+$m = $r->match(put => 'magazines/1');
+is_deeply $m->[0]->params => {controller => 'magazines', action => 'update', id => 1};
+
+$m = $r->match(delete => 'magazines/1');
+is_deeply $m->[0]->params => {controller => 'magazines', action => 'delete', id => 1};
+
+
+
+# nested ads routes work
+$m = $r->match(get => 'magazines/1/ads');
 is_deeply $m->[0]->params => {controller => 'ads', action => 'index', magazine_id => 1};
 
 $m = $r->match(get => 'magazines/1/ads/new');
@@ -41,31 +70,7 @@ is_deeply $m->[0]->params => {controller => 'ads', action => 'delete', magazine_
 $m = $r->match(get => 'magazines/11/ads/12/delete');
 is_deeply $m->[0]->params => {controller => 'ads', action => 'delete_form', magazine_id => 11, id => 12};
 
-
-# magazine routes WON'T work
-
-$m = $r->match(get => 'magazines');
-is $m, undef;
-
-$m = $r->match(get => 'magazines/new');
-is $m, undef;
-
-$m = $r->match(post => 'magazines');
-is $m, undef;
-
-$m = $r->match(get => 'magazines/1');
-is $m, undef;
-
-$m = $r->match(get => 'magazines/1/edit');
-is $m, undef;
-
-$m = $r->match(get => 'magazines/1/delete');
-is $m, undef;
-
-$m = $r->match(put => 'magazines/1');
-is $m, undef;
-
-$m = $r->match(delete => 'magazines/1');
+$m = $r->match(post => 'magazines/1.2/ads');
 is $m, undef;
 
 
@@ -113,10 +118,22 @@ undef $e;
 
 
 
-### now add magazines as a separate resource
+#############################################################################
+### deeper nesting
+$r = Forward::Routes->new;
 
-$r->add_resources('magazines');
+my $stats = $r->add_resources('magazines')->add_resources('ads')->add_resources('stats');
 
+$m = $r->match(get => 'magazines/1/ads/4/stats/7');
+is_deeply $m->[0]->params => {controller => 'stats', action => 'show', magazine_id => 1, ad_id => 4, id => 7};
+is $m->[0]->name, 'magazines_ads_stats_show';
+
+
+is $r->build_path('magazines_ads_stats_show', magazine_id => 3, ad_id => 4, id => 5)->{path} => 'magazines/3/ads/4/stats/5';
+is $r->build_path('magazines_ads_stats_show', magazine_id => 3, ad_id => 4, id => 5)->{method} => 'get';
+
+
+# magazines resource still works
 $m = $r->match(get => 'magazines');
 is_deeply $m->[0]->params => {controller => 'magazines', action => 'index'};
 
@@ -143,8 +160,7 @@ is_deeply $m->[0]->params => {controller => 'magazines', action => 'delete', id 
 
 
 
-# ... and nested resource still works
-
+# ads resource still works
 $m = $r->match(get => 'magazines/1/ads');
 is_deeply $m->[0]->params => {controller => 'ads', action => 'index', magazine_id => 1};
 
@@ -168,3 +184,6 @@ is_deeply $m->[0]->params => {controller => 'ads', action => 'delete', magazine_
 
 $m = $r->match(get => 'magazines/11/ads/12/delete');
 is_deeply $m->[0]->params => {controller => 'ads', action => 'delete_form', magazine_id => 11, id => 12};
+
+$m = $r->match(post => 'magazines/1.2/ads');
+is $m, undef;

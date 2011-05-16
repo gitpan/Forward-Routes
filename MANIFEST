@@ -7,6 +7,7 @@ lib/Forward/Routes/Pattern.pm
 Makefile.PL
 MANIFEST			This list of files
 README.pod
+t/bridges.t
 t/defaults.t
 t/exceptions_unbalanced_parentheses.t
 t/format_constraints.t
@@ -14,6 +15,7 @@ t/match_method_captures.t
 t/match_method_is_bridge.t
 t/match_method_name.t
 t/match_method_params.t
+t/match_with_missing_params.t
 t/method_defaults.t
 t/method_singularize.t
 t/method_to.t
