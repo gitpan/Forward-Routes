@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.18';
+our $VERSION = '0.19';
 
 sub new {
     my $class = shift;
@@ -144,19 +144,33 @@ sub add_resources {
     my $names = $_[0] && ref $_[0] eq 'ARRAY' ? [@{$_[0]}] : [@_];
 
     my $last_resource;
-
+    my $name_prefix = '';
+    my $namespace_prefix = '';
+    my $is_namespace_value;
 
     foreach my $name (@$names) {
         my $resource;
         my $parent_name_prefix = '';
 
+        if ($name eq '-namespace') {
+            $is_namespace_value = 1;
+            next;
+        }
+
+        if ($is_namespace_value) {
+            $namespace_prefix   = $self->format_resource_controller->($name).'::';
+            $name_prefix        = $name.'_';
+            $is_namespace_value = undef;
+            next;
+        }
+
         # Nestes resources
         if ($self->_is_plural_resource) {
-    
+
             my @parent_names = $self->_parent_resource_names;
 
             $parent_name_prefix = join('_', @parent_names).'_';
-  
+
             my $parent_id_name = $self->singularize->($parent_names[-1]).'_id';
 
             $resource = $self->add_route(':'.$parent_id_name.'/'.$name)
@@ -170,22 +184,26 @@ sub add_resources {
               ->_parent_resource_names($name);
         }
 
+        #
+        my $ctrl = $self->format_resource_controller->($name);
+
+
         # resource
         $resource->add_route
           ->via('get')
-          ->to("$name#index")
-          ->name($parent_name_prefix.$name.'_index');
+          ->to($namespace_prefix.$ctrl."#index")
+          ->name($name_prefix.$parent_name_prefix.$name.'_index');
 
         $resource->add_route
           ->via('post')
-          ->to("$name#create")
-          ->name($parent_name_prefix.$name.'_create');
+          ->to($namespace_prefix.$ctrl."#create")
+          ->name($name_prefix.$parent_name_prefix.$name.'_create');
 
         # new resource item
         $resource->add_route('/new')
           ->via('get')
-          ->to("$name#create_form")
-          ->name($parent_name_prefix.$name.'_create_form');
+          ->to($namespace_prefix.$ctrl."#create_form")
+          ->name($name_prefix.$parent_name_prefix.$name.'_create_form');
 
         # modify resource item
         my $nested = $resource->add_route(':id')
@@ -193,28 +211,28 @@ sub add_resources {
 
         $nested->add_route
           ->via('get')
-          ->to("$name#show")
-          ->name($parent_name_prefix.$name.'_show');
+          ->to($namespace_prefix.$ctrl."#show")
+          ->name($name_prefix.$parent_name_prefix.$name.'_show');
 
         $nested->add_route
           ->via('put')
-          ->to("$name#update")
-          ->name($parent_name_prefix.$name.'_update');
+          ->to($namespace_prefix.$ctrl."#update")
+          ->name($name_prefix.$parent_name_prefix.$name.'_update');
 
         $nested->add_route
           ->via('delete')
-          ->to("$name#delete")
-          ->name($parent_name_prefix.$name.'_delete');
+          ->to($namespace_prefix.$ctrl."#delete")
+          ->name($name_prefix.$parent_name_prefix.$name.'_delete');
 
         $nested->add_route('edit')
           ->via('get')
-          ->to("$name#update_form")
-          ->name($parent_name_prefix.$name.'_update_form');
+          ->to($namespace_prefix.$ctrl."#update_form")
+          ->name($name_prefix.$parent_name_prefix.$name.'_update_form');
 
         $nested->add_route('delete')
           ->via('get')
-          ->to("$name#delete_form")
-          ->name($parent_name_prefix.$name.'_delete_form');
+          ->to($namespace_prefix.$ctrl."#delete_form")
+          ->name($name_prefix.$parent_name_prefix.$name.'_delete_form');
 
         $last_resource = $resource;
     }
@@ -235,7 +253,7 @@ sub singularize {
     # Initialize very basic singularize code ref
     $Forward::Routes::singularize ||= sub {
         my $value = shift;
-    
+
         if ($value =~ s/ies$//) {
             $value .= 'y';
         }
@@ -252,6 +270,28 @@ sub singularize {
 
     return $self;
 
+}
+
+
+sub format_resource_controller {
+    my $self = shift;
+    my ($code_ref) = @_;
+
+    $Forward::Routes::format_controller ||= sub {
+        my $value = shift;
+
+        my @parts = split /-/, $value;
+        for my $part (@parts) {
+            $part = join '', map {ucfirst} split /_/, $part;
+        }
+        return join '::', @parts;
+    };
+
+    return $Forward::Routes::format_controller unless $code_ref;
+
+    $Forward::Routes::format_controller = $code_ref;
+
+    return $self;
 }
 
 
@@ -812,7 +852,7 @@ Each route represents a URL path pattern and holds a set of default values.
     my $routes = Forward::Routes->new;
 
     # add a new route with a :city placeholder and controller and action defaults
-    $routes->add_route('/towns/:city')->defaults(controller => 'world', action => 'cities');
+    $routes->add_route('/towns/:city')->defaults(controller => 'World', action => 'cities');
 
 =head2 2. Search for a matching route
 
@@ -873,7 +913,7 @@ matching route available to that method for further use.
     # $match is a Forward::Routes::Match object
     my $match = $matches->[0]
 
-    # $match->params->{controller} is "world"
+    # $match->params->{controller} is "World"
     # $match->params->{action}     is "cities"
     # $match->params->{city}       is "paris"
 
@@ -1014,14 +1054,14 @@ The C<to> method provides a shortcut for action and controller defaults.
     $r = Forward::Routes->new;
 
     $r->add_route('articles')
-      ->to('foo#bar');
+      ->to('Foo#bar');
 
     # is a shortcut for
     $r->add_route('articles')
-      ->defaults(controller => 'foo', action => 'bar');
+      ->defaults(controller => 'Foo', action => 'bar');
 
     $m = $r->match(get => 'articles');
-    # $m->[0]->params is {controller => 'foo', action => 'bar'}
+    # $m->[0]->params is {controller => 'Foo', action => 'bar'}
 
 
 =head2 Request Method Constraints
@@ -1142,7 +1182,7 @@ All methods can be chained.
       ->format('html')
       ->constraints(id => qr/\d+/)
       ->name('hot')
-      ->to('hello#world')
+      ->to('Hello#world')
       ->via('get','post');
 
 
@@ -1190,13 +1230,13 @@ documentation on restful resources.
     $r->add_resources('users', 'photos', 'tags');
 
     $m = $r->match(get => 'photos');
-    # $m->[0]->params is {controller => 'photos', action => 'index'}
+    # $m->[0]->params is {controller => 'Photos', action => 'index'}
 
     $m = $r->match(get => 'photos/1');
-    # $m->[0]->params is {controller => 'photos', action => 'show', id => 1}
+    # $m->[0]->params is {controller => 'Photos', action => 'show', id => 1}
 
     $m = $r->match(put => 'photos/1');
-    # $m->[0]->params is {controller => 'photos', action => 'update', id => 1}
+    # $m->[0]->params is {controller => 'Photos', action => 'update', id => 1}
 
 
 =head2 Path Building and Resources
@@ -1218,18 +1258,18 @@ documentation on nested resources.
 
     $m = $r->match(get => 'magazines/1/ads/4');
     # $m->[0]->params is
-    # {controller => 'ads', action => 'show', magazines_id => 1, ads_id => 4}
+    # {controller => 'Ads', action => 'show', magazines_id => 1, ads_id => 4}
 
 
 =head2 Bridges
 
     $r = Forward::Routes->new;
-    my $bridge = $r->bridge('admin')->to('check#authentication');
-    $bridge->add_route('foo')->to('my#stuff');
+    my $bridge = $r->bridge('admin')->to('Check#authentication');
+    $bridge->add_route('foo')->to('My#stuff');
 
     $m = $r->match(get => 'admin/foo');
-    # $m->[0]->params is {controller => 'check', action => 'authentication'}
-    # $m->[1]->params is {controller => 'my', action => 'stuff'}
+    # $m->[0]->params is {controller => 'Check', action => 'authentication'}
+    # $m->[1]->params is {controller => 'My', action => 'stuff'}
 
 
 =head1 Author

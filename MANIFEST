@@ -27,6 +27,7 @@ t/placeholders_optional_and_defaults.t
 t/request_method_constraints.t
 t/resources.t
 t/resources_with_format_constraint.t
+t/resources_with_namespace_prefix.t
 t/routes.t
 t/singular_resources.t
 META.yml                                 Module meta-data (added by MakeMaker)
