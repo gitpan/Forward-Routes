@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.19';
+our $VERSION = '0.20';
 
 sub new {
     my $class = shift;
@@ -39,7 +39,6 @@ sub initialize {
     $self->method(delete $params->{method});
     $self->method(delete $params->{via});
     $self->defaults(delete $params->{defaults});
-    $self->prefix(delete $params->{prefix});
     $self->name(delete $params->{name});
     $self->to(delete $params->{to});
     $self->_is_plural_resource(delete $params->{_is_plural_resource});
@@ -47,16 +46,6 @@ sub initialize {
 
     return $self;
 
-}
-
-
-sub prefixed_with {
-    my ($self, $prefix) = @_;
-
-    my $router = Forward::Routes->new(prefix => $prefix);
-    $router->{patterns} = $self->{patterns};
-
-    return $router;
 }
 
 
@@ -95,46 +84,108 @@ sub _is_bridge {
 }
 
 
+sub _prepare_resource_options {
+    my $self    = shift;
+    my (@names) = @_;
+
+    my @final;
+    while (@names) {
+        my $name = shift(@names);
+
+        if ($name =~m/^-/){
+            $name =~s/^-//;
+            push @final, {} unless ref $final[-1] eq 'HASH';
+            $final[-1]->{$name} = shift(@names);
+        }
+        else {
+            push @final, $name;
+        }
+    }
+    return \@final;
+}
+
+
 sub add_singular_resources {
-    my ($self, $name) = @_;
+    my $self = shift;
 
-    my $controller = $name;
+    my $names = $_[0] && ref $_[0] eq 'ARRAY' ? [@{$_[0]}] : [@_];
 
-    my $resource = $self->add_route($name);
+    $names = $self->_prepare_resource_options(@$names);
 
-    $resource->add_route('/new')
-      ->via('get')
-      ->to("$controller#create_form")
-      ->name($name.'_create_form');
-
-    $resource->add_route('/edit')
-      ->via('get')
-      ->to("$controller#update_form")
-      ->name($name.'_update_form');
+    my $last_resource;
+    my $ns_name_prefix = '';
+    my $ns_ctrl_prefix = '';
 
 
-    my $nested = $resource->add_route;
-    $nested->add_route
-      ->via('post')
-      ->to("$controller#create")
-      ->name($name.'_create');
+    for (my $i=0; $i<@$names; $i++) {
 
-    $nested->add_route
-      ->via('get')
-      ->to("$controller#show")
-      ->name($name.'_show');
+        my $name = $names->[$i];
 
-    $nested->add_route
-      ->via('put')
-      ->to("$controller#update")
-      ->name($name.'_update');
+        # options
+        next if ref $name;
 
-    $nested->add_route
-      ->via('delete')
-      ->to("$name#delete")
-      ->name($name.'_delete');
 
-    return $self;
+        # path name
+        my $as = $name;
+        my $namespace;
+
+
+        # custom resource params
+        if ($names->[$i+1] && ref $names->[$i+1] eq 'HASH') {
+            my $params = $names->[$i+1];
+
+            $as        = $params->{as}        if $params->{as};
+            $namespace = $params->{namespace} if $params->{namespace};
+        }
+
+
+        # custom namespace
+        $ns_ctrl_prefix   = $self->format_resource_controller->($namespace).'::' if $namespace;
+        $ns_name_prefix   = $namespace.'_' if $namespace;
+
+
+        # camelize controller name (default)
+        my $ctrl = $self->format_resource_controller->($name);
+    
+
+        my $resource = $self->add_route($as);
+    
+        $resource->add_route('/new')
+          ->via('get')
+          ->to($ns_ctrl_prefix."$ctrl#create_form")
+          ->name($ns_name_prefix.$name.'_create_form');
+    
+        $resource->add_route('/edit')
+          ->via('get')
+          ->to($ns_ctrl_prefix."$ctrl#update_form")
+          ->name($ns_name_prefix.$name.'_update_form');
+    
+    
+        my $nested = $resource->add_route;
+        $nested->add_route
+          ->via('post')
+          ->to($ns_ctrl_prefix."$ctrl#create")
+          ->name($ns_name_prefix.$name.'_create');
+    
+        $nested->add_route
+          ->via('get')
+          ->to($ns_ctrl_prefix."$ctrl#show")
+          ->name($ns_name_prefix.$name.'_show');
+    
+        $nested->add_route
+          ->via('put')
+          ->to($ns_ctrl_prefix."$ctrl#update")
+          ->name($ns_name_prefix.$name.'_update');
+    
+        $nested->add_route
+          ->via('delete')
+          ->to($ns_ctrl_prefix."$ctrl#delete")
+          ->name($ns_name_prefix.$name.'_delete');
+
+        $last_resource = $resource;
+    }
+
+    return $last_resource;
 }
 
 
@@ -143,28 +194,53 @@ sub add_resources {
 
     my $names = $_[0] && ref $_[0] eq 'ARRAY' ? [@{$_[0]}] : [@_];
 
-    my $last_resource;
-    my $name_prefix = '';
-    my $namespace_prefix = '';
-    my $is_namespace_value;
+    $names = $self->_prepare_resource_options(@$names);
 
-    foreach my $name (@$names) {
+    my $last_resource;
+    my $ns_name_prefix = '';
+    my $ns_ctrl_prefix = '';
+
+
+    for (my $i=0; $i<@$names; $i++) {
+
+        my $name = $names->[$i];
+
+        # options
+        next if ref $name;
+
+
+        # path name
+        my $as = $name;
+        my $constraints;
+        my $namespace;
+
+
+        # custom resource params
+        if ($names->[$i+1] && ref $names->[$i+1] eq 'HASH') {
+            my $params = $names->[$i+1];
+
+            $as          = $params->{as}          if $params->{as};
+            $constraints = $params->{constraints} if $params->{constraints};
+            $namespace   = $params->{namespace}   if $params->{namespace};
+        }
+
+
+        # custom constraint
+        my $id_constraint = $constraints->{id} || qr/[^.\/]+/;
+
+
+        # custom namespace
+        $ns_ctrl_prefix   = $self->format_resource_controller->($namespace).'::' if $namespace;
+        $ns_name_prefix   = $namespace.'_' if $namespace;
+
+
+        # camelize controller name (default)
+        my $ctrl = $self->format_resource_controller->($name);
+
+
+        # Nested resources
         my $resource;
         my $parent_name_prefix = '';
-
-        if ($name eq '-namespace') {
-            $is_namespace_value = 1;
-            next;
-        }
-
-        if ($is_namespace_value) {
-            $namespace_prefix   = $self->format_resource_controller->($name).'::';
-            $name_prefix        = $name.'_';
-            $is_namespace_value = undef;
-            next;
-        }
-
-        # Nestes resources
         if ($self->_is_plural_resource) {
 
             my @parent_names = $self->_parent_resource_names;
@@ -173,66 +249,63 @@ sub add_resources {
 
             my $parent_id_name = $self->singularize->($parent_names[-1]).'_id';
 
-            $resource = $self->add_route(':'.$parent_id_name.'/'.$name)
+            $resource = $self->add_route(':'.$parent_id_name.'/'.$as)
               ->_is_plural_resource(1)
               ->_parent_resource_names($self->_parent_resource_names, $name)
               ->constraints($parent_id_name => qr/[^.\/]+/);
         }
         else {
-            $resource = $self->add_route($name)
+            $resource = $self->add_route($as)
               ->_is_plural_resource(1)
               ->_parent_resource_names($name);
         }
-
-        #
-        my $ctrl = $self->format_resource_controller->($name);
 
 
         # resource
         $resource->add_route
           ->via('get')
-          ->to($namespace_prefix.$ctrl."#index")
-          ->name($name_prefix.$parent_name_prefix.$name.'_index');
+          ->to($ns_ctrl_prefix.$ctrl."#index")
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_index');
 
         $resource->add_route
           ->via('post')
-          ->to($namespace_prefix.$ctrl."#create")
-          ->name($name_prefix.$parent_name_prefix.$name.'_create');
+          ->to($ns_ctrl_prefix.$ctrl."#create")
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_create');
 
         # new resource item
         $resource->add_route('/new')
           ->via('get')
-          ->to($namespace_prefix.$ctrl."#create_form")
-          ->name($name_prefix.$parent_name_prefix.$name.'_create_form');
+          ->to($ns_ctrl_prefix.$ctrl."#create_form")
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_create_form');
 
         # modify resource item
         my $nested = $resource->add_route(':id')
-          ->constraints('id' => qr/[^.\/]+/);
+          ->constraints('id' => $id_constraint);
 
         $nested->add_route
           ->via('get')
-          ->to($namespace_prefix.$ctrl."#show")
-          ->name($name_prefix.$parent_name_prefix.$name.'_show');
+          ->to($ns_ctrl_prefix.$ctrl."#show")
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_show');
 
         $nested->add_route
           ->via('put')
-          ->to($namespace_prefix.$ctrl."#update")
-          ->name($name_prefix.$parent_name_prefix.$name.'_update');
+          ->to($ns_ctrl_prefix.$ctrl."#update")
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_update');
 
         $nested->add_route
           ->via('delete')
-          ->to($namespace_prefix.$ctrl."#delete")
-          ->name($name_prefix.$parent_name_prefix.$name.'_delete');
+          ->to($ns_ctrl_prefix.$ctrl."#delete")
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_delete');
 
         $nested->add_route('edit')
           ->via('get')
-          ->to($namespace_prefix.$ctrl."#update_form")
-          ->name($name_prefix.$parent_name_prefix.$name.'_update_form');
+          ->to($ns_ctrl_prefix.$ctrl."#update_form")
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_update_form');
 
         $nested->add_route('delete')
           ->via('get')
-          ->to($namespace_prefix.$ctrl."#delete_form")
-          ->name($name_prefix.$parent_name_prefix.$name.'_delete_form');
+          ->to($ns_ctrl_prefix.$ctrl."#delete_form")
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_delete_form');
 
         $last_resource = $resource;
     }
@@ -753,23 +826,17 @@ sub parent {
 }
 
 
-sub prefix {
-    my $self = shift;
-
-    return $self->{prefix} unless defined $_[0];
-
-    $self->{prefix} = $_[0];
-
-    return $self;
-}
-
-
 sub pattern {
     my $self = shift;
+    my (@params) = @_;
 
     $self->{pattern} ||= Forward::Routes::Pattern->new;
 
-    return $self->{pattern};
+    return $self->{pattern} unless @params;
+
+    $self->{pattern}->pattern(@params);
+
+    return $self;
 
 }
 
@@ -1079,6 +1146,9 @@ matching route.
     my $m = $r->match(post => 'logout');
     # $m->[0] is {}
 
+All child routes inherit the method constraint of their parent, unless the
+method constraint of the child is overwritten.
+
 
 =head2 Format Constraints
 
@@ -1098,10 +1168,11 @@ retrieved from the returned match object.
     $m = $r->match(get => 'hello/there.jpeg');
     # $m is undef
 
-Once a format constraint has been defined, all child routes inherit the
-behaviour of their parents, unless they get format constraints themselves.
-For example, adding a format constraint to the route root object affects all
-child routes added via C<add_route>.
+
+All child routes inherit the format constraint of their parent, unless the
+format constraint of the child is overwritten. For example, adding a format
+constraint to the route root object affects all child routes added
+via add_route.
     
     my $root = Forward::Routes->new->format('html');
     $root->add_route('foo')->format('xml');
@@ -1168,7 +1239,7 @@ The C<build_path> method returns a hash ref with the keys "method" and "path".
 Path building is useful to build tag helpers that can be used in templates.
 For example, a link_to helper might generate a link with the help of a route
 name: link_to('route_name', placeholder => 'value'). In contrast to hard
-coding the URL in templates, routes could be changed an all links in your
+coding the URL in templates, routes could be changed and all links in your
 templates would get adjusted automatically.
 
 
@@ -1219,12 +1290,12 @@ be reduced this way.
     # 6 regular expression searches performed
 
 
-=head2 Resources
+=head2 Resource Routing
 
-The C<resources> method allows to generate Rails like resources.
+The C<add_resources> method enables Rails like resource routing.
 
 Please look at L<Forward::Guides::Routes::Resources> for more in depth
-documentation on restful resources.
+documentation on resourceful routes.
 
     $r = Forward::Routes->new;
     $r->add_resources('users', 'photos', 'tags');
@@ -1238,28 +1309,15 @@ documentation on restful resources.
     $m = $r->match(put => 'photos/1');
     # $m->[0]->params is {controller => 'Photos', action => 'update', id => 1}
 
+    my $path = $r->build_path('photos_update', id => 987)
+    # $path->{path} is 'photos/987'
+    # $path->{method} is 'put'
 
-=head2 Path Building and Resources
-
-    $r = Forward::Routes->new;
-    $r->add_resources('users', 'photos', 'tags');
-
-    # $r->build_path('photos_update', id => 987)->{path} is 'photos/987'
-
-
-=head2 Nested Resources
+Resource routing is quite flexible and offers many options for customization:
+L<Forward::Guides::Routes::ResourceCustomization>
 
 Please look at L<Forward::Guides::Routes::NestedResources> for more in depth
 documentation on nested resources.
-
-    $r = Forward::Routes->new;
-    my $magazines = $r->add_resources('magazines');
-    $magazines->add_resources('ads');
-
-    $m = $r->match(get => 'magazines/1/ads/4');
-    # $m->[0]->params is
-    # {controller => 'Ads', action => 'show', magazines_id => 1, ads_id => 4}
-
 
 =head2 Bridges
 

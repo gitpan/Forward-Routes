@@ -7,7 +7,7 @@ use Test::More;
 
 use Forward::Routes;
 
-use Test::More tests => 29;
+use Test::More tests => 30;
 
 
 
@@ -15,7 +15,11 @@ use Test::More tests => 29;
 ### plural resources with namespace prefix
 
 my $r = Forward::Routes->new;
-$r->add_resources('photos', -namespace => 'admin', 'users', 'prices');
+$r->add_resources(
+    'photos',
+    'users' => -namespace => 'admin',
+    'prices' => -namespace => 'admin'
+);
 
 
 # test routes withOUT namespace prefix
@@ -82,6 +86,11 @@ is_deeply $m->[0]->params => {controller => 'Admin::Prices', action => 'index'};
 is $r->build_path('admin_prices_index')->{path} => 'prices';
 
 
+# just make sure:
+$m = $r->match(get => 'admin');
+is $m, undef;
+
+
 #############################################################################
 ### customized format_resource_controller method
 
@@ -93,7 +102,11 @@ $r->format_resource_controller(
     }
 );
 
-$r->add_resources('photos', -namespace => 'admin', 'users', 'prices');
+$r->add_resources(
+    'photos',
+    'users' => -namespace => 'admin',
+    'prices' => -namespace => 'admin'
+);
 
 $m = $r->match(get => 'photos');
 is_deeply $m->[0]->params => {controller => 'photos', action => 'index'};

@@ -7,7 +7,7 @@ use Test::More;
 
 use Forward::Routes;
 
-use Test::More tests => 208;
+use Test::More tests => 201;
 
 #############################################################################
 ### empty
@@ -32,7 +32,6 @@ $r = Forward::Routes->new;
 
 is $r->{method}, undef;
 is $r->{defaults}, undef;
-is $r->{prefix}, undef;
 is $r->{name}, undef;
 is $r->{to}, undef;
 is $r->{pattern}, undef;
@@ -135,22 +134,6 @@ $nested->add_route('articles')->defaults(comments => 'foo');
 
 $m = $r->match(get => 'author/articles');
 is_deeply $m->[0]->params => {comments => 'foo'};
-
-
-#############################################################################
-### match_with_constraints
-
-$r = Forward::Routes->new;
-
-$r->add_route('articles/:id')->constraints(id => qr/\d+/);
-
-$m = $r->match(get => 'articles/abc');
-ok not defined $m;
-
-$m = $r->match(get => 'articles/123');
-is_deeply $m->[0]->params => {id => 123};
-
-
 
 
 
@@ -766,36 +749,11 @@ is $r->{routes_by_name}->{photos_index}->name, 'photos_index';
 
 
 #############################################################################
-### prefix
-
-$r = Forward::Routes->new;
-$r->add_route('prefixed', to => 'foo#bar', prefix => 'hello');
-
-my $admin = $r->prefixed_with('admin');
-$admin->add_route('foo', to => 'foo#bar');
-
-ok !$r->match(get => 'foo');
-
-$m = $r->match(get => 'admin/foo');
-
-#is_deeply $m->[0]->params => {controller => 'admin-foo', action => 'bar'};
-
-$m = $r->match(get => 'hello/prefixed');
-
-#is_deeply $m->[0]->params => {controller => 'hello-foo', action => 'bar'};
-
-
-#############################################################################
 ### build_path
 
 $r = Forward::Routes->new;
 $r->add_route('foo',       name => 'one');
 $r->add_route(':foo/:bar', name => 'two');
-$r->add_route(
-    'articles/:id',
-    constraints => {id => qr/\d+/},
-    name        => 'article'
-);
 $r->add_route('photos/*other',                   name => 'glob1');
 $r->add_route('books/*section/:title',           name => 'glob2');
 $r->add_route('*a/foo/*b',                       name => 'glob3');
@@ -807,22 +765,13 @@ $e = eval {$r->build_path('unknown')->{path}; };
 like $@ => qr/Unknown name 'unknown' used to build a path/;
 undef $e;
 
-$e = eval {$r->build_path('article')->{path}; };
-like $@ => qr/Required param 'id' was not passed when building a path/;
-undef $e;
-
 $e = eval {$r->build_path('glob2')->{path}; };
 like $@ =>
   qr/Required glob param 'section' was not passed when building a path/;
 undef $e;
 
-$e = eval {$r->build_path('article', id => 'abc')->{path}; };
-like $@ => qr/Param 'id' fails a constraint/;
-undef $e;
-
 is $r->build_path('one')->{path} => 'foo';
 is $r->build_path('two', foo => 'foo', bar => 'bar')->{path} => 'foo/bar';
-is $r->build_path('article', id => 123)->{path} => 'articles/123';
 is $r->build_path('glob1', other => 'foo/bar/baz')->{path} =>
   'photos/foo/bar/baz';
 is $r->build_path(

@@ -247,6 +247,9 @@ matching route.
     my $m = $r->match(post => 'logout');
     # $m->[0] is {}
 
+All child routes inherit the method constraint of their parent, unless the
+method constraint of the child is overwritten.
+
 
 =head2 Format Constraints
 
@@ -266,10 +269,11 @@ retrieved from the returned match object.
     $m = $r->match(get => 'hello/there.jpeg');
     # $m is undef
 
-Once a format constraint has been defined, all child routes inherit the
-behaviour of their parents, unless they get format constraints themselves.
-For example, adding a format constraint to the route root object affects all
-child routes added via C<add_route>.
+
+All child routes inherit the format constraint of their parent, unless the
+format constraint of the child is overwritten. For example, adding a format
+constraint to the route root object affects all child routes added
+via add_route.
     
     my $root = Forward::Routes->new->format('html');
     $root->add_route('foo')->format('xml');
@@ -336,7 +340,7 @@ The C<build_path> method returns a hash ref with the keys "method" and "path".
 Path building is useful to build tag helpers that can be used in templates.
 For example, a link_to helper might generate a link with the help of a route
 name: link_to('route_name', placeholder => 'value'). In contrast to hard
-coding the URL in templates, routes could be changed an all links in your
+coding the URL in templates, routes could be changed and all links in your
 templates would get adjusted automatically.
 
 
@@ -387,12 +391,12 @@ be reduced this way.
     # 6 regular expression searches performed
 
 
-=head2 Resources
+=head2 Resource Routing
 
-The C<resources> method allows to generate Rails like resources.
+The C<add_resources> method enables Rails like resource routing.
 
 Please look at L<Forward::Guides::Routes::Resources> for more in depth
-documentation on restful resources.
+documentation on resourceful routes.
 
     $r = Forward::Routes->new;
     $r->add_resources('users', 'photos', 'tags');
@@ -406,28 +410,15 @@ documentation on restful resources.
     $m = $r->match(put => 'photos/1');
     # $m->[0]->params is {controller => 'Photos', action => 'update', id => 1}
 
+    my $path = $r->build_path('photos_update', id => 987)
+    # $path->{path} is 'photos/987'
+    # $path->{method} is 'put'
 
-=head2 Path Building and Resources
-
-    $r = Forward::Routes->new;
-    $r->add_resources('users', 'photos', 'tags');
-
-    # $r->build_path('photos_update', id => 987)->{path} is 'photos/987'
-
-
-=head2 Nested Resources
+Resource routing is quite flexible and offers many options for customization:
+L<Forward::Guides::Routes::ResourceCustomization>
 
 Please look at L<Forward::Guides::Routes::NestedResources> for more in depth
 documentation on nested resources.
-
-    $r = Forward::Routes->new;
-    my $magazines = $r->add_resources('magazines');
-    $magazines->add_resources('ads');
-
-    $m = $r->match(get => 'magazines/1/ads/4');
-    # $m->[0]->params is
-    # {controller => 'Ads', action => 'show', magazines_id => 1, ads_id => 4}
-
 
 =head2 Bridges
 
