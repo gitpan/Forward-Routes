@@ -22,6 +22,7 @@ t/method_defaults.t
 t/method_singularize.t
 t/method_to.t
 t/nested_resources.t
+t/nested_routes_naming.t
 t/nested_routes_with_format_inheritance.t
 t/nested_routes_with_method_inheritance.t
 t/placeholders_optional.t
