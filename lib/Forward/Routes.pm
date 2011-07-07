@@ -8,7 +8,7 @@ use Forward::Routes::Pattern;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 
 sub new {
     my $class = shift;
@@ -130,6 +130,7 @@ sub add_singular_resources {
         my $namespace;
         my $format;
         my $format_exists;
+        my $only;
 
 
         # custom resource params
@@ -140,8 +141,26 @@ sub add_singular_resources {
             $namespace     = $params->{namespace} if $params->{namespace};
             $format_exists = 1                    if exists $params->{format};
             $format        = $params->{format}    if exists $params->{format};
+            $only          = $params->{only}      if $params->{only};
         }
 
+        # selected routes
+        my %selected = (
+            create      => 1,
+            show        => 1,
+            update      => 1,
+            delete      => 1,
+            create_form => 1,
+            update_form => 1
+        );
+
+        # only
+        if ($only) {
+            %selected = ();
+            foreach my $type (@$only) {
+                $selected{$type} = 1;
+            }
+        }
 
         # custom namespace
         $ns_ctrl_prefix   = $self->format_resource_controller->($namespace).'::' if $namespace;
@@ -160,34 +179,38 @@ sub add_singular_resources {
         $resource->add_route('/new')
           ->via('get')
           ->to($ns_ctrl_prefix."$ctrl#create_form")
-          ->name($ns_name_prefix.$name.'_create_form');
+          ->name($ns_name_prefix.$name.'_create_form')
+          if $selected{create_form};;
     
         $resource->add_route('/edit')
           ->via('get')
           ->to($ns_ctrl_prefix."$ctrl#update_form")
-          ->name($ns_name_prefix.$name.'_update_form');
-    
-    
-        my $nested = $resource->add_route;
-        $nested->add_route
+          ->name($ns_name_prefix.$name.'_update_form')
+          if $selected{update_form};
+
+        $resource->add_route
           ->via('post')
           ->to($ns_ctrl_prefix."$ctrl#create")
-          ->name($ns_name_prefix.$name.'_create');
+          ->name($ns_name_prefix.$name.'_create')
+          if $selected{create};
     
-        $nested->add_route
+        $resource->add_route
           ->via('get')
           ->to($ns_ctrl_prefix."$ctrl#show")
-          ->name($ns_name_prefix.$name.'_show');
+          ->name($ns_name_prefix.$name.'_show')
+          if $selected{show};
     
-        $nested->add_route
+        $resource->add_route
           ->via('put')
           ->to($ns_ctrl_prefix."$ctrl#update")
-          ->name($ns_name_prefix.$name.'_update');
+          ->name($ns_name_prefix.$name.'_update')
+          if $selected{update};
     
-        $nested->add_route
+        $resource->add_route
           ->via('delete')
           ->to($ns_ctrl_prefix."$ctrl#delete")
-          ->name($ns_name_prefix.$name.'_delete');
+          ->name($ns_name_prefix.$name.'_delete')
+          if $selected{delete};
 
         $last_resource = $resource;
     }
@@ -222,6 +245,7 @@ sub add_resources {
         my $namespace;
         my $format;
         my $format_exists;
+        my $only;
 
         # custom resource params
         if ($names->[$i+1] && ref $names->[$i+1] eq 'HASH') {
@@ -232,11 +256,31 @@ sub add_resources {
             $namespace     = $params->{namespace}   if $params->{namespace};
             $format_exists = 1                      if exists $params->{format};
             $format        = $params->{format}      if exists $params->{format};
+            $only          = $params->{only}        if $params->{only};
         }
 
+        # selected routes
+        my %selected = (
+            index       => 1,
+            create      => 1,
+            show        => 1,
+            update      => 1,
+            delete      => 1,
+            create_form => 1,
+            update_form => 1,
+            delete_form => 1
+        );
+
+        # only
+        if ($only) {
+            %selected = ();
+            foreach my $type (@$only) {
+                $selected{$type} = 1;
+            }
+        }
 
         # custom constraint
-        my $id_constraint = $constraints->{id} || qr/[^.\/]+/;
+        my $id_constraint = $constraints->{id} || qr/(?!new\Z)[^.\/]+/;
 
 
         # custom namespace
@@ -278,47 +322,57 @@ sub add_resources {
         $resource->add_route
           ->via('get')
           ->to($ns_ctrl_prefix.$ctrl."#index")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_index');
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_index')
+          if $selected{index};
 
         $resource->add_route
           ->via('post')
           ->to($ns_ctrl_prefix.$ctrl."#create")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_create');
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_create')
+          if $selected{create};
 
         # new resource item
         $resource->add_route('/new')
           ->via('get')
           ->to($ns_ctrl_prefix.$ctrl."#create_form")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_create_form');
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_create_form')
+          if $selected{create_form};
 
         # modify resource item
         my $nested = $resource->add_route(':id')
-          ->constraints('id' => $id_constraint);
+          ->constraints('id' => $id_constraint)
+          if $selected{show} || $selected{update} || $selected{delete}
+            || $selected{update_form} || $selected{delete_form};
 
         $nested->add_route
           ->via('get')
           ->to($ns_ctrl_prefix.$ctrl."#show")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_show');
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_show')
+          if $selected{show};
 
         $nested->add_route
           ->via('put')
           ->to($ns_ctrl_prefix.$ctrl."#update")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_update');
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_update')
+          if $selected{update};
 
         $nested->add_route
           ->via('delete')
           ->to($ns_ctrl_prefix.$ctrl."#delete")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_delete');
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_delete')
+          if $selected{delete};
 
         $nested->add_route('edit')
           ->via('get')
           ->to($ns_ctrl_prefix.$ctrl."#update_form")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_update_form');
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_update_form')
+          if $selected{update_form};
 
         $nested->add_route('delete')
           ->via('get')
           ->to($ns_ctrl_prefix.$ctrl."#delete_form")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_delete_form');
+          ->name($ns_name_prefix.$parent_name_prefix.$name.'_delete_form')
+          if $selected{delete_form};
 
         $last_resource = $resource;
     }
@@ -932,11 +986,36 @@ Instead of letting a web server like Apache decide which files to serve based
 on the provided URL, the whole work can be done by your framework using the
 L<Forward::Routes> module.
 
+Ruby on Rails and Perl's Mojolicious make use of routes. Forward::Routes, in
+contrast to that, tries to provide the same or even better functionality
+without the tight couplings with a full featured framework.
+
+Think of routes as kind of simplified regular expressions! First of all, a
+bunch of routes is defined. Each route contains information on
+
+=over 2
+
+=item *
+
+what kind of URLs to match
+
+=item *
+
+what to do in case of a match
+
+=back
+
+Finally, the request method and path of a users HTTP request are passed to
+search for a matching route.
+
+
 =head2 1. Routes setup
 
-Think of routes as kind of simplified regular expressions!
-
-Each route represents a URL path pattern and holds a set of default values.
+Each route represents a specific URL or a bunch of URLs (if placeholders are
+used). The URL path pattern is defined via the C<add_route> command. A route
+also contains information on what to do in case of a match. A common use
+case is to provide controller and action defaults, so the framework knows
+which controller method to execute in case of a match:
 
     # create a routes root object
     my $routes = Forward::Routes->new;
@@ -947,11 +1026,12 @@ Each route represents a URL path pattern and holds a set of default values.
 =head2 2. Search for a matching route
 
 After the setup has been done, the method and path of a current HTTP request
-can be passed to the routes root object using the "match" method to search for
-a matching route.
+can be passed to the routes root object to search for a matching route.
 
 The match method returns an array ref of L<Forward::Routes::Match> objects in
-case of a match, or undef if there is no match.
+case of a match, or undef if there is no match. Unless advanced techniques
+such as bridges are used, the array ref contains no more than one match object
+($matches->[0]).
 
     # get request path and method (e.g. from a Plack::Request object)
     my $path   = $req->path_info;
@@ -960,13 +1040,24 @@ case of a match, or undef if there is no match.
     # search routes
     my $matches = $routes->match($method => $path);
 
-
-Unless advanced techniques such as bridges are used, the array ref contains
-no more than one match object ($matches->[0]).
-
 The search ends as soon as a matching route has been found. As a result, if
 there are multiple routes that might match, the route that has been defined
 first wins.
+
+    # $matches is an array ref of Forward::Routes::Match objects
+    my $matches = $routes->match(GET => '/towns/paris');
+
+    # exactly one match object is returned:
+    # $match is a Forward::Routes::Match object
+    my $match = $matches->[0];
+
+    # $match->params->{controller} is "World"
+    # $match->params->{action}     is "cities"
+    # $match->params->{city}       is "paris"
+
+Controller and action parameters can be used by your framework to execute the
+desired controller method, while making default and placeholder values of the
+matching route available to that method for further use.
 
 If the passed path and method do not match against a defined route, an
 undefined value is returned. Frameworks might render a 404 not found page in
@@ -974,9 +1065,6 @@ such cases.
 
     # $matches is undef
     my $matches = $routes->match(get => '/hello_world');
-
-
-=head2 3. Parameters
 
 The match object holds two types of parameters:
 
@@ -992,20 +1080,6 @@ method
 placeholder values extracted from the passed URL path
 
 =back
-
-Controller and action parameters can be used by your framework to execute the
-desired controller method, while making default and placeholder values of the
-matching route available to that method for further use.
-
-    # $matches is an array ref
-    my $matches = $routes->match(get => '/towns/paris');
-
-    # $match is a Forward::Routes::Match object
-    my $match = $matches->[0]
-
-    # $match->params->{controller} is "World"
-    # $match->params->{action}     is "cities"
-    # $match->params->{city}       is "paris"
 
 
 =head1 Features and Methods

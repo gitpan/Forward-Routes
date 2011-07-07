@@ -34,9 +34,11 @@ t/resources_with_custom_path_naming.t
 t/resources_with_format_constraint.t
 t/resources_with_multiple_customizations.t
 t/resources_with_namespace_prefix.t
+t/resources_with_only_option.t
 t/routes.t
 t/singular_resources.t
 t/singular_resources_with_custom_path_naming.t
 t/singular_resources_with_format_constraint.t
 t/singular_resources_with_namespace_prefix.t
+t/singular_resources_with_only_option.t
 META.yml                                 Module meta-data (added by MakeMaker)
