@@ -3,11 +3,9 @@
 use strict;
 use warnings;
 
-use Test::More;
+use Test::More tests => 21;
 
 use Forward::Routes;
-
-use Test::More tests => 20;
 
 
 #############################################################################
@@ -15,7 +13,9 @@ use Test::More tests => 20;
 
 my $r = Forward::Routes->new;
 
-$r->add_singular_resources('geocoder');
+my $resource = $r->add_singular_resources('geocoder');
+
+is $resource->_is_singular_resource, 1;
 
 my $m = $r->match(get => 'geocoder/new');
 is_deeply $m->[0]->params => {controller => 'Geocoder', action => 'create_form'};
@@ -36,7 +36,7 @@ $m = $r->match(delete => 'geocoder');
 is_deeply $m->[0]->params => {controller => 'Geocoder', action => 'delete'};
 
 
-is ref $r->find_route('geocoder_create_form'), 'Forward::Routes';
+is ref $r->find_route('geocoder_create_form'), 'Forward::Routes::Resources';
 is $r->find_route('geocoder_foo'), undef;
 is $r->find_route('geocoder_create_form')->name, 'geocoder_create_form';
 is $r->find_route('geocoder_create')->name, 'geocoder_create';

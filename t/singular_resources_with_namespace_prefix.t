@@ -3,11 +3,10 @@
 use strict;
 use warnings;
 
-use Test::More;
+use Test::More tests => 21;
 
 use Forward::Routes;
 
-use Test::More tests => 21;
 
 
 #############################################################################
@@ -17,8 +16,8 @@ my $r = Forward::Routes->new;
 
 $r->add_singular_resources(
     'geocoder',
-    'contact' => -namespace => 'admin',
-    'test' => -namespace => 'admin'
+    'contact' => -namespace => 'Admin',
+    'test' => -namespace => 'Admin'
 );
 
 my $m = $r->match(get => 'geocoder/new');

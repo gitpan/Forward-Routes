@@ -5,10 +5,11 @@ use warnings;
 
 use Forward::Routes::Match;
 use Forward::Routes::Pattern;
+use Forward::Routes::Resources;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.23';
+our $VERSION = '0.40';
 
 sub new {
     my $class = shift;
@@ -54,6 +55,24 @@ sub add_route {
 
     my $child = $self->new(@_);
 
+    return $self->_add_to_parent($child);
+
+}
+
+
+sub _add_resource_route {
+    my $self = shift;
+
+    my $child = Forward::Routes::Resources->new(@_);
+
+    return $self->_add_to_parent($child);
+}
+
+
+sub _add_to_parent {
+    my $self = shift;
+    my ($child) = @_;
+
     # Format inheritance
     $child->format([@{$self->{format}}]) if $self->{format};
     $child->method([@{$self->{method}}]) if $self->{method};
@@ -63,6 +82,7 @@ sub add_route {
     $child->parent($self);
 
     return $child;
+
 }
 
 
@@ -84,300 +104,17 @@ sub _is_bridge {
 }
 
 
-sub _prepare_resource_options {
-    my $self    = shift;
-    my (@names) = @_;
-
-    my @final;
-    while (@names) {
-        my $name = shift(@names);
-
-        if ($name =~m/^-/){
-            $name =~s/^-//;
-            push @final, {} unless ref $final[-1] eq 'HASH';
-            $final[-1]->{$name} = shift(@names);
-        }
-        else {
-            push @final, $name;
-        }
-    }
-    return \@final;
-}
-
-
 sub add_singular_resources {
     my $self = shift;
 
-    my $names = $_[0] && ref $_[0] eq 'ARRAY' ? [@{$_[0]}] : [@_];
-
-    $names = $self->_prepare_resource_options(@$names);
-
-    my $last_resource;
-    my $ns_name_prefix = '';
-    my $ns_ctrl_prefix = '';
-
-
-    for (my $i=0; $i<@$names; $i++) {
-
-        my $name = $names->[$i];
-
-        # options
-        next if ref $name;
-
-
-        # path name
-        my $as = $name;
-        my $namespace;
-        my $format;
-        my $format_exists;
-        my $only;
-
-
-        # custom resource params
-        if ($names->[$i+1] && ref $names->[$i+1] eq 'HASH') {
-            my $params = $names->[$i+1];
-
-            $as            = $params->{as}        if $params->{as};
-            $namespace     = $params->{namespace} if $params->{namespace};
-            $format_exists = 1                    if exists $params->{format};
-            $format        = $params->{format}    if exists $params->{format};
-            $only          = $params->{only}      if $params->{only};
-        }
-
-        # selected routes
-        my %selected = (
-            create      => 1,
-            show        => 1,
-            update      => 1,
-            delete      => 1,
-            create_form => 1,
-            update_form => 1
-        );
-
-        # only
-        if ($only) {
-            %selected = ();
-            foreach my $type (@$only) {
-                $selected{$type} = 1;
-            }
-        }
-
-        # custom namespace
-        $ns_ctrl_prefix   = $self->format_resource_controller->($namespace).'::' if $namespace;
-        $ns_name_prefix   = $namespace.'_' if $namespace;
-
-
-        # camelize controller name (default)
-        my $ctrl = $self->format_resource_controller->($name);
-    
-
-        my $resource = $self->add_route($as);
-
-        # custom format
-        $resource->format($format) if $format_exists;
-    
-        $resource->add_route('/new')
-          ->via('get')
-          ->to($ns_ctrl_prefix."$ctrl#create_form")
-          ->name($ns_name_prefix.$name.'_create_form')
-          if $selected{create_form};;
-    
-        $resource->add_route('/edit')
-          ->via('get')
-          ->to($ns_ctrl_prefix."$ctrl#update_form")
-          ->name($ns_name_prefix.$name.'_update_form')
-          if $selected{update_form};
-
-        $resource->add_route
-          ->via('post')
-          ->to($ns_ctrl_prefix."$ctrl#create")
-          ->name($ns_name_prefix.$name.'_create')
-          if $selected{create};
-    
-        $resource->add_route
-          ->via('get')
-          ->to($ns_ctrl_prefix."$ctrl#show")
-          ->name($ns_name_prefix.$name.'_show')
-          if $selected{show};
-    
-        $resource->add_route
-          ->via('put')
-          ->to($ns_ctrl_prefix."$ctrl#update")
-          ->name($ns_name_prefix.$name.'_update')
-          if $selected{update};
-    
-        $resource->add_route
-          ->via('delete')
-          ->to($ns_ctrl_prefix."$ctrl#delete")
-          ->name($ns_name_prefix.$name.'_delete')
-          if $selected{delete};
-
-        $last_resource = $resource;
-    }
-
-    return $last_resource;
+    return Forward::Routes::Resources->add_singular($self, @_);
 }
 
 
 sub add_resources {
     my $self = shift;
 
-    my $names = $_[0] && ref $_[0] eq 'ARRAY' ? [@{$_[0]}] : [@_];
-
-    $names = $self->_prepare_resource_options(@$names);
-
-    my $last_resource;
-    my $ns_name_prefix = '';
-    my $ns_ctrl_prefix = '';
-
-
-    for (my $i=0; $i<@$names; $i++) {
-
-        my $name = $names->[$i];
-
-        # options
-        next if ref $name;
-
-
-        # path name
-        my $as = $name;
-        my $constraints;
-        my $namespace;
-        my $format;
-        my $format_exists;
-        my $only;
-
-        # custom resource params
-        if ($names->[$i+1] && ref $names->[$i+1] eq 'HASH') {
-            my $params = $names->[$i+1];
-
-            $as            = $params->{as}          if $params->{as};
-            $constraints   = $params->{constraints} if $params->{constraints};
-            $namespace     = $params->{namespace}   if $params->{namespace};
-            $format_exists = 1                      if exists $params->{format};
-            $format        = $params->{format}      if exists $params->{format};
-            $only          = $params->{only}        if $params->{only};
-        }
-
-        # selected routes
-        my %selected = (
-            index       => 1,
-            create      => 1,
-            show        => 1,
-            update      => 1,
-            delete      => 1,
-            create_form => 1,
-            update_form => 1,
-            delete_form => 1
-        );
-
-        # only
-        if ($only) {
-            %selected = ();
-            foreach my $type (@$only) {
-                $selected{$type} = 1;
-            }
-        }
-
-        # custom constraint
-        my $id_constraint = $constraints->{id} || qr/(?!new\Z)[^.\/]+/;
-
-
-        # custom namespace
-        $ns_ctrl_prefix   = $self->format_resource_controller->($namespace).'::' if $namespace;
-        $ns_name_prefix   = $namespace.'_' if $namespace;
-
-
-        # camelize controller name (default)
-        my $ctrl = $self->format_resource_controller->($name);
-
-
-        # Nested resources
-        my $resource;
-        my $parent_name_prefix = '';
-        if ($self->_is_plural_resource) {
-
-            my @parent_names = $self->_parent_resource_names;
-
-            $parent_name_prefix = join('_', @parent_names).'_';
-
-            my $parent_id_name = $self->singularize->($parent_names[-1]).'_id';
-
-            $resource = $self->add_route(':'.$parent_id_name.'/'.$as)
-              ->_is_plural_resource(1)
-              ->_parent_resource_names($self->_parent_resource_names, $name)
-              ->constraints($parent_id_name => qr/[^.\/]+/);
-        }
-        else {
-            $resource = $self->add_route($as)
-              ->_is_plural_resource(1)
-              ->_parent_resource_names($name);
-        }
-
-        # custom format
-        $resource->format($format) if $format_exists;
-
-
-        # resource
-        $resource->add_route
-          ->via('get')
-          ->to($ns_ctrl_prefix.$ctrl."#index")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_index')
-          if $selected{index};
-
-        $resource->add_route
-          ->via('post')
-          ->to($ns_ctrl_prefix.$ctrl."#create")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_create')
-          if $selected{create};
-
-        # new resource item
-        $resource->add_route('/new')
-          ->via('get')
-          ->to($ns_ctrl_prefix.$ctrl."#create_form")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_create_form')
-          if $selected{create_form};
-
-        # modify resource item
-        my $nested = $resource->add_route(':id')
-          ->constraints('id' => $id_constraint)
-          if $selected{show} || $selected{update} || $selected{delete}
-            || $selected{update_form} || $selected{delete_form};
-
-        $nested->add_route
-          ->via('get')
-          ->to($ns_ctrl_prefix.$ctrl."#show")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_show')
-          if $selected{show};
-
-        $nested->add_route
-          ->via('put')
-          ->to($ns_ctrl_prefix.$ctrl."#update")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_update')
-          if $selected{update};
-
-        $nested->add_route
-          ->via('delete')
-          ->to($ns_ctrl_prefix.$ctrl."#delete")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_delete')
-          if $selected{delete};
-
-        $nested->add_route('edit')
-          ->via('get')
-          ->to($ns_ctrl_prefix.$ctrl."#update_form")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_update_form')
-          if $selected{update_form};
-
-        $nested->add_route('delete')
-          ->via('get')
-          ->to($ns_ctrl_prefix.$ctrl."#delete_form")
-          ->name($ns_name_prefix.$parent_name_prefix.$name.'_delete_form')
-          if $selected{delete_form};
-
-        $last_resource = $resource;
-    }
-
-    return $last_resource;
+    return Forward::Routes::Resources->add_plural($self, @_);
 }
 
 
@@ -912,29 +649,23 @@ sub pattern {
 }
 
 
-sub _parent_resource_names {
-    my $self = shift;
-    my (@names) = @_;
-
-    # Initialize
-    $self->{_parent_resource_names} ||=[];
-
-
-    if (@names) {
-        $self->{_parent_resource_names} = \@names;
-        return $self;
-    }
-
-    return @{$self->{_parent_resource_names}};
-}
-
-
 sub _is_plural_resource {
     my $self = shift;
 
     return $self->{_is_plural_resource} unless defined $_[0];
 
     $self->{_is_plural_resource} = $_[0];
+
+    return $self;
+}
+
+
+sub _is_singular_resource {
+    my $self = shift;
+
+    return $self->{_is_singular_resource} unless defined $_[0];
+
+    $self->{_is_singular_resource} = $_[0];
 
     return $self;
 }
@@ -976,11 +707,11 @@ sub _match_format {
 
 1;
 __END__
-=head1 Name
+=head1 NAME
 
 Forward::Routes - restful routes for web framework developers
 
-=head1 Description
+=head1 DESCRIPTION
 
 Instead of letting a web server like Apache decide which files to serve based
 on the provided URL, the whole work can be done by your framework using the
@@ -1082,7 +813,7 @@ placeholder values extracted from the passed URL path
 =back
 
 
-=head1 Features and Methods
+=head1 FEATURES AND METHODS
 
 =head2 Add new routes
 
@@ -1427,18 +1158,23 @@ documentation on nested resources.
     # $m->[1]->params is {controller => 'My', action => 'stuff'}
 
 
-=head1 Author
+=head1 AUTHOR
 
 ForwardEver
 
-=head1 Copyright and License
+=head1 DEVELOPMENT
+
+=head2 Repository
+    http://github.com/forwardever/Forward-Routes
+
+=head1 COPYRIGHT AND LICENSE
 
 Copyright (C) 2011, ForwardEver
 
 This program is free software, you can redistribute it and/or modify it under
 the terms of the Artistic License version 2.0.
 
-=head1 Credits
+=head1 CREDITS
 
 Path matching and path building inspired by Viacheslav Tykhanovskyi's Router module
 L<https://github.com/vti/router>

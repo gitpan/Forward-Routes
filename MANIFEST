@@ -5,6 +5,7 @@ lib/Forward/Guides/Routes/Resources.pod
 lib/Forward/Routes.pm
 lib/Forward/Routes/Match.pm
 lib/Forward/Routes/Pattern.pm
+lib/Forward/Routes/Resources.pm
 Makefile.PL
 MANIFEST			This list of files
 README.pod
@@ -19,9 +20,10 @@ t/match/method_name.t
 t/match/method_params.t
 t/match_with_missing_params.t
 t/method_defaults.t
+t/method_namespace_to_name.t
 t/method_singularize.t
 t/method_to.t
-t/nested_resources.t
+t/nested_routes_default_precedence.t
 t/nested_routes_naming.t
 t/nested_routes_with_format_inheritance.t
 t/nested_routes_with_method_inheritance.t
@@ -29,6 +31,9 @@ t/placeholders_optional.t
 t/placeholders_optional_and_defaults.t
 t/request_method_constraints.t
 t/resources.t
+t/resources_add_member_route.t
+t/resources_nested.t
+t/resources_nesting_and_namespaces.t
 t/resources_with_custom_id_constraint.t
 t/resources_with_custom_path_naming.t
 t/resources_with_format_constraint.t
@@ -37,6 +42,9 @@ t/resources_with_namespace_prefix.t
 t/resources_with_only_option.t
 t/routes.t
 t/singular_resources.t
+t/singular_resources_add_member_route.t
+t/singular_resources_nested.t
+t/singular_resources_nesting_and_namespaces.t
 t/singular_resources_with_custom_path_naming.t
 t/singular_resources_with_format_constraint.t
 t/singular_resources_with_namespace_prefix.t

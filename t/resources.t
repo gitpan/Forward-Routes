@@ -3,11 +3,9 @@
 use strict;
 use warnings;
 
-use Test::More;
+use Test::More tests => 36;
 
 use Forward::Routes;
-
-use Test::More tests => 35;
 
 
 
@@ -15,7 +13,9 @@ use Test::More tests => 35;
 ### plural resources
 
 my $r = Forward::Routes->new;
-$r->add_resources('users','photos','tags');
+my $resource = $r->add_resources('users','photos','tags');
+
+is $resource->_is_plural_resource, 1;
 
 my $m = $r->match(get => 'photos');
 is_deeply $m->[0]->params => {controller => 'Photos', action => 'index'};
@@ -46,7 +46,7 @@ is_deeply $m->[0]->params => {controller => 'Photos', action => 'delete', id => 
 
 
 
-is ref $r->find_route('photos_index'), 'Forward::Routes';
+is ref $r->find_route('photos_index'), 'Forward::Routes::Resources';
 is $r->find_route('photos_foo'), undef;
 is $r->find_route('photos_index')->name, 'photos_index';
 is $r->find_route('photos_create_form')->name, 'photos_create_form';
