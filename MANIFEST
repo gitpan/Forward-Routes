@@ -31,6 +31,7 @@ t/placeholders_optional.t
 t/placeholders_optional_and_defaults.t
 t/request_method_constraints.t
 t/resources.t
+t/resources_add_collection_route.t
 t/resources_add_member_route.t
 t/resources_nested.t
 t/resources_nesting_and_namespaces.t

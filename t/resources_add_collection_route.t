@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 46;
+use Test::More tests => 45;
 
 use Forward::Routes;
 
@@ -15,50 +15,56 @@ use Forward::Routes;
 # automatic controller and action defaults and naming
 my $r = Forward::Routes->new;
 my $photos = $r->add_resources('photos');
-$photos->add_member_route('search_form');
-$photos->add_member_route('search')->via('post');
+$photos->add_collection_route('search_form');
+$photos->add_collection_route('search')->via('post');
 
-my $m = $r->match(get => 'photos/1/search_form');
-is_deeply $m->[0]->params => {controller => 'Photos', action => 'search_form', id => 1};
+my $m = $r->match(get => 'photos/search_form');
+is_deeply $m->[0]->params => {controller => 'Photos', action => 'search_form'};
 is $m->[0]->name, 'photos_search_form';
 
-$m = $r->match(post => 'photos/1/search_form');
-is_deeply $m->[0]->params => {controller => 'Photos', action => 'search_form', id => 1};
+$m = $r->match(post => 'photos/search_form');
+is_deeply $m->[0]->params => {controller => 'Photos', action => 'search_form'};
 is $m->[0]->name, 'photos_search_form';
 
-$m = $r->match(get => 'photos/1/search');
+
+# has to provide undef (could match show without regex adjustment)
+$m = $r->match(get => 'photos/search');
 is $m, undef;
+my $re = '(?!new\Z)(?!search_form\Z)(?!search\Z)';
+like $photos->{_members}->pattern->pattern, qr/$re/;
 
-$m = $r->match(post => 'photos/1/search');
-is_deeply $m->[0]->params => {controller => 'Photos', action => 'search', id => 1};
+
+
+$m = $r->match(post => 'photos/search');
+is_deeply $m->[0]->params => {controller => 'Photos', action => 'search'};
 is $m->[0]->name, 'photos_search';
 
 
 
 # overwrite controller and action defaults
-$photos->add_member_route('find')->to('Foo#bar');
-$m = $r->match(get => 'photos/0/find');
-is_deeply $m->[0]->params => {controller => 'Foo', action => 'bar', id => 0};
+$photos->add_collection_route('find')->to('Foo#bar');
+$m = $r->match(get => 'photos/find');
+is_deeply $m->[0]->params => {controller => 'Foo', action => 'bar'};
 is $m->[0]->name, 'photos_find';
 
 
 # overwrite name
-$photos->add_member_route('find2')->name('hello_world2');
-$m = $r->match(get => 'photos/123/find2');
-is_deeply $m->[0]->params => {controller => 'Photos', action => 'find2', id => 123};
+$photos->add_collection_route('find2')->name('hello_world2');
+$m = $r->match(get => 'photos/find2');
+is_deeply $m->[0]->params => {controller => 'Photos', action => 'find2'};
 is $m->[0]->name, 'hello_world2';
 
 
 # pass path instead of name
-$photos->add_member_route('/find3');
-$m = $r->match(get => 'photos/123/find3');
-is_deeply $m->[0]->params => {controller => 'Photos', action => 'find3', id => 123};
+$photos->add_collection_route('/find3');
+$m = $r->match(get => 'photos/find3');
+is_deeply $m->[0]->params => {controller => 'Photos', action => 'find3'};
 is $m->[0]->name, 'photos_find3';
 
 
-$photos->add_member_route('/find4/find5');
-$m = $r->match(get => 'photos/123/find4/find5');
-is_deeply $m->[0]->params => {controller => 'Photos', action => 'find4_find5', id => 123};
+$photos->add_collection_route('/find4/find5');
+$m = $r->match(get => 'photos/find4/find5');
+is_deeply $m->[0]->params => {controller => 'Photos', action => 'find4_find5'};
 is $m->[0]->name, 'photos_find4_find5';
 
 
@@ -117,36 +123,34 @@ is $r->build_path('photos_update', id => 987)->{method} => 'put';
 
 $r = Forward::Routes->new;
 $photos = $r->add_resources('photos' => -namespace => 'Admin');
-$photos->add_member_route('search_form');
+$photos->add_collection_route('search_form');
 
-$m = $r->match(get => 'photos/1/search_form');
-is_deeply $m->[0]->params => {controller => 'Admin::Photos', action => 'search_form', id => 1};
+$m = $r->match(get => 'photos/search_form');
+is_deeply $m->[0]->params => {controller => 'Admin::Photos', action => 'search_form'};
 is $m->[0]->name, 'admin_photos_search_form';
-
 
 
 #############################################################################
 # with only option
-# no default member routes
+# no default collection routes
 
 $r = Forward::Routes->new;
-$photos = $r->add_resources('photos' => -only => [qw/index/]);
-isa_ok $photos->add_member_route('search_form'), 'Forward::Routes';
-$m = $r->match(get => 'photos/1/edit');
-is $m, undef;
-$m = $r->match(get => 'photos/1/search_form');
-is_deeply $m->[0]->params => {controller => 'Photos', action => 'search_form', id => 1};
+$photos = $r->add_resources('photos' => -only => [qw/show/]);
+isa_ok $photos->add_collection_route('search_form'), 'Forward::Routes';
 
 
-# now with constraints and no default member routes
+#############################################################################
+# with only option
+# has to provide undef (could match show without regex adjustment)
+
 $r = Forward::Routes->new;
-$photos = $r->add_resources(
-  'photos' =>
-      -only => [qw/index/], 
-      -constraints => {id => qr/\d{6}/});
-isa_ok $photos->add_member_route('search_form'), 'Forward::Routes';
-$m = $r->match(get => 'photos/1/search_form');
-is $m, undef;
-$m = $r->match(get => 'photos/123456/search_form');
-is_deeply $m->[0]->params => {controller => 'Photos', action => 'search_form', id => 123456};
+$photos = $r->add_resources('photos' => -only => [qw/show/]);
+$photos->add_collection_route('search_form');
+$photos->add_collection_route('search')->via('post');
 
+$m = $r->match(get => 'photos/search_form');
+ok $m;
+$m = $r->match(get => 'photos/search');
+is $m, undef;
+$m = $r->match(get => 'photos/new');
+is $m, undef;

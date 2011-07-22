@@ -9,7 +9,7 @@ use Forward::Routes::Resources;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.41';
+our $VERSION = '0.43';
 
 sub new {
     my $class = shift;
@@ -1165,7 +1165,8 @@ ForwardEver
 =head1 DEVELOPMENT
 
 =head2 Repository
-    http://github.com/forwardever/Forward-Routes
+
+L<https://github.com/forwardever/Forward-Routes>
 
 =head1 COPYRIGHT AND LICENSE
 
