@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Forward-Routes
-version:            0.43
+version:            0.44
 abstract:           Forward::Routes: routes for web framework builders
 author:  []
 license:            artistic_2
@@ -8,8 +8,9 @@ distribution_type:  module
 configure_requires:  {}
 build_requires:  {}
 requires:
-    Carp:  0
-    perl:  5.008007
+    Carp:    0
+    parent:  0
+    perl:    5.008007
 resources:
     license:     http://dev.perl.org/licenses/
     repository:  http://github.com/forwardever/Forward-Routes
