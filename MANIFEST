@@ -17,6 +17,7 @@ t/format_constraints.t
 t/match/method_captures.t
 t/match/method_is_bridge.t
 t/match/method_name.t
+t/match/method_namespace.t
 t/match/method_params.t
 t/match_with_missing_params.t
 t/method_defaults.t
@@ -27,6 +28,7 @@ t/nested_routes_default_precedence.t
 t/nested_routes_naming.t
 t/nested_routes_with_format_inheritance.t
 t/nested_routes_with_method_inheritance.t
+t/nested_routes_with_namespace_inheritance.t
 t/placeholders_optional.t
 t/placeholders_optional_and_defaults.t
 t/request_method_constraints.t
