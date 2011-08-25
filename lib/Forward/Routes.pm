@@ -9,7 +9,7 @@ use Forward::Routes::Resources;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.46';
+our $VERSION = '0.47';
 
 sub new {
     my $class = shift;
@@ -39,6 +39,7 @@ sub initialize {
     # Save to route
     $self->method(delete $params->{method});
     $self->method(delete $params->{via});
+    $self->namespace(delete $params->{namespace});
     $self->defaults(delete $params->{defaults});
     $self->name(delete $params->{name});
     $self->to(delete $params->{to});
