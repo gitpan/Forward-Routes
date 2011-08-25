@@ -10,6 +10,7 @@ Makefile.PL
 MANIFEST			This list of files
 README.pod
 t/bridges.t
+t/bridges_with_namespace_inheritance.t
 t/constraints.t
 t/defaults.t
 t/exceptions_unbalanced_parentheses.t
@@ -26,6 +27,7 @@ t/method_singularize.t
 t/method_to.t
 t/nested_routes_default_precedence.t
 t/nested_routes_naming.t
+t/nested_routes_with_app_namespace_and_namespace_inheritance.t
 t/nested_routes_with_format_inheritance.t
 t/nested_routes_with_method_inheritance.t
 t/nested_routes_with_namespace_inheritance.t
@@ -37,6 +39,7 @@ t/resources_add_collection_route.t
 t/resources_add_member_route.t
 t/resources_nested.t
 t/resources_nesting_and_namespaces.t
+t/resources_with_app_namespace_and_namespace_inheritance.t
 t/resources_with_custom_id_constraint.t
 t/resources_with_custom_path_naming.t
 t/resources_with_format_constraint.t
