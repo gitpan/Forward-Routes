@@ -1,10 +1,7 @@
-#!/usr/bin/env perl
-
 use strict;
 use warnings;
-
 use Test::More tests => 88;
-
+use lib 'lib';
 use Forward::Routes;
 
 
@@ -41,8 +38,6 @@ is $m, undef;
 
 $m = $r->match(delete => 'photos/1.html');
 is $m, undef;
-
-
 
 ### format constraint
 
@@ -110,7 +105,6 @@ is $r->build_path('photos_update_form', id => 789)->{method} => 'get';
 is $r->build_path('photos_update', id => 987)->{method} => 'put';
 is $r->build_path('photos_delete', id => 654)->{method} => 'delete';
 is $r->build_path('photos_delete_form', id => 222)->{method} => 'get';
-
 
 
 ### empty format (explicitly)
