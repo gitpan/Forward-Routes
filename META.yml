@@ -23,4 +23,4 @@ requires:
 resources:
   license: http://dev.perl.org/licenses/
   repository: http://github.com/forwardever/Forward-Routes
-version: 0.50
+version: 0.51
