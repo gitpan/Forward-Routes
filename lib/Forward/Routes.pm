@@ -8,7 +8,7 @@ use Forward::Routes::Resources;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.52';
+our $VERSION = '0.53';
 
 
 ## ---------------------------------------------------------------------------
@@ -160,9 +160,7 @@ sub constraints {
 
     return $self->pattern->constraints unless defined $_[0];
 
-    my $constraints = ref $_[0] eq 'HASH' ? $_[0] : {@_};
-
-    $self->pattern->constraints($constraints);
+    $self->pattern->constraints(@_);
 
     return $self;
 }
@@ -577,7 +575,9 @@ sub build_path {
     my $route = $self->find_route($name);
     croak qq/Unknown name '$name' used to build a path/ unless $route;
 
-    my $path = $route->_build_path(%params);
+    my $path_string = $route->_build_path(\%params);
+    my $path = {};
+    $path->{path} = $path_string;
 
     # format extension
     my $format;
@@ -599,19 +599,24 @@ sub build_path {
 
 sub _build_path {
     my $self = shift;
-    my (%params) = @_;
+    my ($params) = @_;
 
-    my $path = {};
-    $path->{path} = '';
+    my $path = '';
 
     if ($self->{parent}) {
-        $path = $self->{parent}->_build_path(%params);
+        $path = $self->{parent}->_build_path($params);
     }
 
     # Return path if current route has no pattern
     return $path unless $self->{pattern} && defined $self->{pattern}->pattern;
 
     $self->{pattern}->compile;
+
+    # Use pre-generated pattern->path in case no captures exist for current route
+    if (my $new_path = $self->{pattern}->path) {
+        $path .= $new_path;
+        return $path;
+    }
 
     # Path parts by optional level
     my $parts = {};
@@ -625,12 +630,6 @@ sub _build_path {
     # Optional depth
     my $depth = 0;
 
-    # Use pre-generated pattern->path in case no captures exist for current route
-    if (my $new_path = $self->{pattern}->path) {
-        $path->{path} = $path->{path}.$new_path;
-        return $path;
-    }
-
     foreach my $part (@{$self->{pattern}->parts}) {
         my $type = $part->{type};
         my $name = $part->{name} || '';
@@ -641,35 +640,39 @@ sub _build_path {
             next;
         }
 
-        # Close optional group
-        if ($type eq 'close_group' && ${$part->{optional}}) {
+        if ($type eq 'close_group') {
 
-            # Only pass group content to lower levels if captures have values
-            if ($existing_capture->{$depth}) {
+            # Close optional group          
+            if (${$part->{optional}}) {
 
-                # push data to optional level
-                push @{$parts->{$depth-1}}, @{$parts->{$depth}};
-
-                # error, if lower level optional group has emtpy captures, but current
-                # optional group has filled captures
-                $self->capture_error($empty_capture->{$depth-1})
-                  if $empty_capture->{$depth-1};
-
-                # all other captures in lower level must have values now
-                $existing_capture->{$depth-1} += $existing_capture->{$depth};
+                # Only pass group content to lower levels if captures have values
+                if ($existing_capture->{$depth}) {
+    
+                    # push data to optional level
+                    push @{$parts->{$depth-1}}, @{$parts->{$depth}};
+    
+                    # error, if lower level optional group has emtpy captures, but current
+                    # optional group has filled captures
+                    $self->capture_error($empty_capture->{$depth-1})
+                      if $empty_capture->{$depth-1};
+    
+                    # all other captures in lower level must have values now
+                    $existing_capture->{$depth-1} += $existing_capture->{$depth};
+                }
+    
+                $existing_capture->{$depth} = 0;
+                $empty_capture->{$depth} = undef;
+                $parts->{$depth} = [];
+    
+                $depth--;
+    
+                next;
+            }
+            # Close non optional group
+            else {
+                next;
             }
 
-            $existing_capture->{$depth} = 0;
-            $empty_capture->{$depth} = undef;
-            $parts->{$depth} = [];
-
-            $depth--;
-
-            next;
-        }
-        # Close non optional group
-        elsif ($type eq 'close_group' && !${$part->{optional}}) {
-            next;
         }
 
         my $path_part;
@@ -678,7 +681,7 @@ sub _build_path {
         if ($type eq 'capture') {
 
             # Param
-            $path_part = $params{$name};
+            $path_part = $params->{$name};
             $path_part = defined $path_part && length $path_part ? $path_part : $self->{defaults}->{$name};
 
             if (!$depth && !defined $path_part) {
@@ -720,9 +723,9 @@ sub _build_path {
             my $name = $part->{name};
 
             croak qq/Required glob param '$name' was not passed when building a path/
-              unless exists $params{$name};
+              unless exists $params->{$name};
 
-            $path_part = $params{$name};
+            $path_part = $params->{$name};
         }
         # Text
         elsif ($type eq 'text') {
@@ -741,10 +744,10 @@ sub _build_path {
     my $new_path = join('' => @{$parts->{0}});
 
     if ($self->{parent}) {
-        $path->{path} = $path->{path}.$new_path;
+        $path .= $new_path;
     }
     else {
-        $path->{path} = $new_path;
+        $path = $new_path;
     }
 
     return $path;
