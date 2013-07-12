@@ -8,7 +8,7 @@ use Forward::Routes::Resources;
 use Scalar::Util qw/weaken/;
 use Carp 'croak';
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 
 ## ---------------------------------------------------------------------------
@@ -17,23 +17,7 @@ our $VERSION = '0.54';
 
 sub new {
     my $class = shift;
-
-    $class = ref $class if ref $class;
-
     my $self = bless {}, $class;
-
-    # block
-    my $code_ref = pop @_ if @_ && ref $_[-1] eq 'CODE';
-    $code_ref->($self) if $code_ref;
-
-    # Pattern
-    my $pattern = @_ % 2 ? shift : undef;
-    $self->pattern->pattern($pattern) if defined $pattern;
-
-    # Shortcut in case of chained API
-    return $self unless @_;
-
-    # Process remaining params
     return $self->initialize(@_);
 }
 
@@ -41,18 +25,37 @@ sub new {
 sub initialize {
     my $self = shift;
 
+    # block
+    my $code_ref = pop @_ if @_ && ref $_[-1] eq 'CODE';
+
+    # inherit
+    $self->{_inherit_format} = 1;
+    $self->{_inherit_via} = 1;
+    $self->{_inherit_namespace} = 1;
+    $self->{_inherit_app_namespace} = 1;
+
+    # Pattern
+    my $pattern = @_ % 2 ? shift : undef;
+    $self->pattern->pattern($pattern) if defined $pattern;
+
+    # Shortcut in case of chained API
+    return $self unless @_ || $code_ref;
+
     # Remaining params
     my $params = ref $_[0] eq 'HASH' ? {%{$_[0]}} : {@_};
 
-    # Save to route
-    $self->via(delete $params->{via});
-    $self->namespace(delete $params->{namespace});
-    $self->app_namespace(delete $params->{app_namespace});
+    $self->format(delete $params->{format}) if exists $params->{format};
+    $self->via(delete $params->{via}) if exists $params->{via};
+    $self->namespace(delete $params->{namespace}) if exists $params->{namespace};
+    $self->app_namespace(delete $params->{app_namespace}) if exists $params->{app_namespace};
     $self->defaults(delete $params->{defaults});
     $self->name(delete $params->{name});
     $self->to(delete $params->{to});
-    $self->_is_plural_resource(delete $params->{_is_plural_resource});
     $self->constraints(delete $params->{constraints});
+    $self->resource_name(delete $params->{resource_name});
+
+    # after inheritance
+    $code_ref->($self) if $code_ref;
 
     return $self;
 }
@@ -64,30 +67,108 @@ sub initialize {
 
 sub add_route {
     my $self = shift;
+    my (@params) = @_;
 
-    my $child = $self->new(@_);
+    my $child = Forward::Routes->new(@params);
 
-    return $self->_add_child($child);
+    return $self->add_child($child);
 }
 
 
 sub add_resources {
     my $self = shift;
+    my $params = [@_];
 
-    return Forward::Routes::Resources->add_plural($self, @_);
+    $params = Forward::Routes::Resources->_prepare_resource_options(@$params);
+
+    my $last_resource;
+
+    while (my $name = shift @$params) {
+
+        my $options;
+        if (@$params && ref $params->[0] eq 'HASH') {
+            $options = shift @$params;
+        }
+
+        $last_resource = $self->_add_plural_resource($name, $options);
+    }
+
+    return $last_resource;
+}
+
+
+sub _add_plural_resource {
+    my $self = shift;
+    my ($resource_name, $options) = @_;
+
+    my $resource = Forward::Routes::Resources::Plural->new($options->{as} // $resource_name,
+        resource_name => $resource_name,
+        %$options
+    );
+    $resource->init_options($options);
+
+    $resource->_adjust_nested_resources($self);
+
+    $self->add_child($resource);
+
+    # after _adjust_nested_resources because parent name is needed for route name
+    # after add_child because of namespace inheritance for route name
+    $resource->preprocess;
+   
+    $resource->inflate;
+    
+    return $resource;
 }
 
 
 sub add_singular_resources {
     my $self = shift;
+    my $params = [@_];
 
-    return Forward::Routes::Resources->add_singular($self, @_);
+    $params = Forward::Routes::Resources->_prepare_resource_options(@$params);
+
+    my $last_resource;
+
+    while (my $name = shift @$params) {
+
+        my $options;
+        if (@$params && ref $params->[0] eq 'HASH') {
+            $options = shift @$params;
+        }
+
+        $last_resource = $self->_add_singular_resource($name, $options);
+    }
+
+    return $last_resource;
+}
+
+
+sub _add_singular_resource {
+    my $self = shift;
+    my ($resource_name, $options) = @_;
+
+    my $resource = Forward::Routes::Resources::Singular->new($options->{as} // $resource_name,
+        resource_name => $resource_name,
+        %$options
+    );
+    $resource->init_options($options);
+
+    $resource->_adjust_nested_resources($self);
+
+    $self->add_child($resource);
+
+    # after _adjust_nested_resources because parent name is needed for route name
+    # after add_child because of namespace inheritance for route name
+    $resource->preprocess;
+   
+    $resource->inflate;
+    
+    return $resource;
 }
 
 
 sub bridge {
     my $self = shift;
-
     return $self->add_route(@_)->_is_bridge(1);
 }
 
@@ -100,39 +181,30 @@ sub children {
 
 sub parent {
     my $self = shift;
-
-    return $self->{parent} unless $_[0];
-
-    $self->{parent} = $_[0];
-
+    my ($value) = @_;
+    return $self->{parent} unless $value;
+    
+    $self->{parent} = $value;
     weaken $self->{parent};
-
     return $self;
 }
 
 
-sub _add_resource_route {
-    my $self = shift;
-
-    my $child = Forward::Routes::Resources->new(@_);
-
-    return $self->_add_child($child);
-}
-
-
-sub _add_child {
+sub add_child {
     my $self = shift;
     my ($child) = @_;
 
-    # Format, method and namespace inheritance
-    $child->format([@{$self->{format}}]) if $self->{format};
-    $child->via([@{$self->{via}}]) if $self->{via};
-    $child->namespace($self->{namespace}) if $self->{namespace};
-    $child->app_namespace($self->{app_namespace}) if $self->{app_namespace};
-
+    # child
     push @{$self->children}, $child;
 
+    # parent
     $child->parent($self);
+
+    # inheritance
+    $child->format(        [@{$self->{format}}]   ) if $self->{format}        && $child->_inherit_format;
+    $child->via(           [@{$self->{via}}]      ) if $self->{via}           && $child->_inherit_via;
+    $child->namespace(     $self->{namespace}     ) if $self->{namespace}     && $child->_inherit_namespace;
+    $child->app_namespace( $self->{app_namespace} ) if $self->{app_namespace} && $child->_inherit_app_namespace;
 
     return $child;
 }
@@ -147,6 +219,8 @@ sub app_namespace {
     my (@params) = @_;
 
     return $self->{app_namespace} unless @params;
+
+    $self->{_inherit_app_namespace} = 0;
 
     $self->{app_namespace} = $params[0];
 
@@ -191,6 +265,8 @@ sub format {
 
     return $self->{format} unless @params;
 
+    $self->{_inherit_format} = 0;
+
     # no format constraint, no format matching performed
     if (!defined($params[0])) {
         $self->{format} = undef;
@@ -219,11 +295,24 @@ sub name {
 }
 
 
+sub resource_name {
+    my $self = shift;
+    my ($name) = @_;
+
+    return $self->{resource_name} unless defined $name;
+
+    $self->{resource_name} = $name;
+    return $self;
+}
+
+
 sub namespace {
     my $self = shift;
     my (@params) = @_;
 
     return $self->{namespace} unless @params;
+
+    $self->{_inherit_namespace} = 0;
 
     $self->{namespace} = $params[0];
 
@@ -247,10 +336,18 @@ sub pattern {
 
 sub via {
     my $self = shift;
+    my (@params) = @_;
 
-    return $self->{via} unless $_[0];
+    return $self->{via} unless @params;
 
-    my $methods = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
+    $self->{_inherit_via} = 0;
+
+    if (!defined $params[0]) {
+        $self->{via} = undef;
+        return $self;
+    }
+
+    my $methods = ref $params[0] eq 'ARRAY' ? $params[0] : [@params];
 
     @$methods = map {lc $_} @$methods;
 
@@ -286,25 +383,39 @@ sub _is_bridge {
 }
 
 
+sub _inherit_format {
+    my $self = shift;
+    $self->{_inherit_format};
+}
+
+
+sub _inherit_via {
+    my $self = shift;
+    $self->{_inherit_via};
+}
+
+
+sub _inherit_namespace {
+    my $self = shift;
+    $self->{_inherit_namespace};
+}
+
+
+sub _inherit_app_namespace {
+    my $self = shift;
+    $self->{_inherit_app_namespace};
+}
+
+
 sub _is_plural_resource {
     my $self = shift;
-
-    return $self->{_is_plural_resource} unless defined $_[0];
-
-    $self->{_is_plural_resource} = $_[0];
-
-    return $self;
+    return ref $self eq 'Forward::Routes::Resources::Plural' ? 1 : 0;
 }
 
 
 sub _is_singular_resource {
     my $self = shift;
-
-    return $self->{_is_singular_resource} unless defined $_[0];
-
-    $self->{_is_singular_resource} = $_[0];
-
-    return $self;
+    return ref $self eq 'Forward::Routes::Resources::Singular' ? 1 : 0;
 }
 
 
@@ -331,6 +442,12 @@ sub find_route {
 }
 
 
+sub routes_by_name {
+    my $self = shift;
+    return $self->{routes_by_name};
+}
+
+
 sub match {
     my $self = shift;
     my ($method, $path) = @_;
@@ -347,9 +464,9 @@ sub match {
 
     my $m = $matches->[-1];
     for (my $i=0; $i<(@$matches-1); $i++) {
-        $matches->[$i]->{params} = {%{$m->params}, %{$matches->[$i]->params} }; # all params except controller and action
-        $matches->[$i]->{captures} = $m->captures;
-        $matches->[$i]->_add_name($m->name);
+        $matches->[$i]->_set_params({%{$m->params}, %{$matches->[$i]->params}}); # all params except controller and action
+        $matches->[$i]->_set_captures($m->captures);
+        $matches->[$i]->_set_name($m->name);
     }
 
     return $matches;
@@ -435,9 +552,9 @@ sub _match {
     # Match object
     if (!@$matches){
         my $m = Forward::Routes::Match->new;
-        $m->_add_name($self->name);
-        $m->_add_app_namespace($self->app_namespace);
-        $m->_add_namespace($self->namespace);
+        $m->_set_name($self->name);
+        $m->_set_app_namespace($self->app_namespace);
+        $m->_set_namespace($self->namespace);
 
         if ($self->{format}) {
             $m->_add_params({format => $format_extracted_from_path});
@@ -448,8 +565,8 @@ sub _match {
 
     if ($self->_is_bridge) {
         my $m = Forward::Routes::Match->new;
-        $m->_add_app_namespace($self->app_namespace);
-        $m->_add_namespace($self->namespace);
+        $m->_set_app_namespace($self->app_namespace);
+        $m->_set_namespace($self->namespace);
 
         $m->is_bridge(1);
 
@@ -577,12 +694,12 @@ sub build_path {
     if ($format = $params{format}) {
         $route->_match_format($format) || die qq/Invalid format '$format' used to build a path/;
     }
-    $format ||= $route->{format} ? $route->{format}->[0] : undef;
+    $format ||= $route->format ? $route->format->[0] : undef;
     $path->{path} .= '.' . $format if $format;
 
 
     # Method
-    $path->{method} = $route->{via}->[0] if $route->{via};
+    $path->{method} = $route->via->[0] if $route->via;
 
     $path->{path} =~s/^\///;
 

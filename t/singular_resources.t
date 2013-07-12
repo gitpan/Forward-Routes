@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 21;
+use Test::More tests => 22;
 use lib 'lib';
 use Forward::Routes;
 
@@ -32,8 +32,9 @@ is_deeply $m->[0]->params => {controller => 'Geocoder', action => 'update'};
 $m = $r->match(delete => 'geocoder');
 is_deeply $m->[0]->params => {controller => 'Geocoder', action => 'delete'};
 
+is $resource->name, 'geocoder';
 
-is ref $r->find_route('geocoder_create_form'), 'Forward::Routes::Resources';
+is ref $r->find_route('geocoder_create_form'), 'Forward::Routes';
 is $r->find_route('geocoder_foo'), undef;
 is $r->find_route('geocoder_create_form')->name, 'geocoder_create_form';
 is $r->find_route('geocoder_create')->name, 'geocoder_create';
