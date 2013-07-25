@@ -19,8 +19,9 @@ no_index:
 requires:
   Carp: 0
   parent: 0
-  perl: 5.008007
+  perl: 5.010001
 resources:
+  bugtracker: https://github.com/forwardever/Forward-Routes/issues
   license: http://dev.perl.org/licenses/
-  repository: http://github.com/forwardever/Forward-Routes
-version: 0.55
+  repository: https://github.com/forwardever/Forward-Routes
+version: 0.56
